@@ -1,0 +1,417 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.25;
+
+import "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorSettingsUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/governance/utils/IVotes.sol";
+import "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
+import "@openzeppelin/contracts/interfaces/IERC6372.sol";
+import "../interfaces/IHyraGovernor.sol";
+
+/**
+ * @title HyraGovernor
+ * @notice DAO governance contract for proposal management and voting
+ */
+contract HyraGovernor is
+    Initializable,
+    GovernorUpgradeable,
+    GovernorSettingsUpgradeable,
+    GovernorCountingSimpleUpgradeable,
+    GovernorVotesUpgradeable,
+    GovernorVotesQuorumFractionUpgradeable,
+    GovernorTimelockControlUpgradeable,
+    IHyraGovernor
+{   
+    // ============ State Variables ============
+    mapping(uint256 => ProposalType) public proposalTypes;
+    mapping(uint256 => bool) public proposalCancelled;
+    mapping(address => bool) public securityCouncilMembers;
+    mapping(uint256 => address) private _proposalProposers; // Track proposers for v5
+    uint256 public securityCouncilMemberCount;
+    
+    // Quorum percentages (basis points)
+    uint256 public constant STANDARD_QUORUM = 1000; // 10%
+    uint256 public constant EMERGENCY_QUORUM = 1500; // 15%
+    uint256 public constant CONSTITUTIONAL_QUORUM = 3000; // 30%
+    uint256 public constant UPGRADE_QUORUM = 2500; // 25%
+    
+    // Storage gap for upgradeability
+    uint256[44] private __gap;
+
+    // ============ Events ============
+    event ProposalTypeSet(uint256 indexed proposalId, ProposalType proposalType);
+    event ProposalCancelled(uint256 indexed proposalId);
+    event SecurityCouncilMemberAdded(address indexed member);
+    event SecurityCouncilMemberRemoved(address indexed member);
+    event ProposalCreatedWithType(
+        uint256 indexed proposalId,
+        address proposer,
+        ProposalType proposalType
+    );
+    event QuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
+    event VoteCasted(address indexed voter, uint256 proposalId, uint8 support, uint256 weight);
+
+    // ============ Errors ============
+    error InvalidProposalType();
+    error OnlySecurityCouncil();
+    error NotSecurityCouncilMember();
+    error AlreadySecurityCouncilMember();
+    error ProposalAlreadyCancelled();
+    error UnauthorizedCancellation();
+    error InvalidProposalLength();
+    error ZeroAddress();
+    error ProposalNotFound();
+    error VotingNotActive();
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+    /**
+     * @notice Initialize the Governor contract
+     * @param _token The voting token (HyraToken)
+     * @param _timelock The timelock controller
+     * @param _votingDelay Delay before voting starts (blocks)
+     * @param _votingPeriod Duration of voting (blocks)
+     * @param _proposalThreshold Min tokens to create proposal
+     * @param _quorumPercentage Initial quorum percentage
+     */
+    function initialize(
+        IVotes _token,
+        TimelockControllerUpgradeable _timelock,
+        uint256 _votingDelay,
+        uint256 _votingPeriod,
+        uint256 _proposalThreshold,
+        uint256 _quorumPercentage
+    ) public initializer {
+        __Governor_init("HyraGovernor");
+        __GovernorSettings_init(uint48(_votingDelay), uint32(_votingPeriod), _proposalThreshold);
+        __GovernorCountingSimple_init();
+        __GovernorVotes_init(_token);
+        __GovernorVotesQuorumFraction_init(_quorumPercentage);
+        __GovernorTimelockControl_init(_timelock);
+    }
+
+    // ============ Proposal Functions ============
+
+    /**
+     * @notice Create a proposal with specific type
+     * @param targets Target addresses for calls
+     * @param values ETH values for calls
+     * @param calldatas Encoded function calls
+     * @param description Proposal description
+     * @param proposalType Type of proposal
+     */
+    function proposeWithType(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description,
+        ProposalType proposalType
+    ) public returns (uint256) {
+        // Validate proposal type
+        if (uint8(proposalType) > uint8(ProposalType.UPGRADE)) {
+            revert InvalidProposalType();
+        }
+        
+        // Emergency proposals require security council
+        if (proposalType == ProposalType.EMERGENCY) {
+            if (!securityCouncilMembers[msg.sender]) {
+                revert OnlySecurityCouncil();
+            }
+        }
+        
+        // Validate proposal arrays
+        if (!_validateProposal(targets, values, calldatas)) {
+            revert InvalidProposalLength();
+        }
+        
+        uint256 proposalId = propose(targets, values, calldatas, description);
+        proposalTypes[proposalId] = proposalType;
+        _proposalProposers[proposalId] = msg.sender; // Store proposer for v5
+        
+        emit ProposalTypeSet(proposalId, proposalType);
+        emit ProposalCreatedWithType(proposalId, msg.sender, proposalType);
+        
+        return proposalId;
+    }
+
+    /**
+     * @notice Get proposal proposer (required for v5)
+     * @param proposalId The proposal ID
+     */
+    function proposalProposer(uint256 proposalId) public view override(GovernorUpgradeable, IGovernor) returns (address) {
+        return _proposalProposers[proposalId];
+    }
+
+    /**
+     * @notice Cancel a proposal
+     */
+    function cancel(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) public override(GovernorUpgradeable, IGovernor) returns (uint256) {
+        uint256 proposalId = hashProposal(targets, values, calldatas, descriptionHash);
+        
+        ProposalState currentState = state(proposalId);
+        if (currentState == ProposalState.Canceled) {
+            revert ProposalAlreadyCancelled();
+        }
+        
+        // Check authorization - proposer or security council can cancel
+        address proposer = proposalProposer(proposalId);
+        if (msg.sender != proposer && !securityCouncilMembers[msg.sender]) {
+            revert UnauthorizedCancellation();
+        }
+        
+        proposalCancelled[proposalId] = true;
+        emit ProposalCancelled(proposalId);
+        
+        return super.cancel(targets, values, calldatas, descriptionHash);
+    }
+
+    // ============ Security Council Functions ============
+
+    /**
+     * @notice Add a security council member
+     * @param _member Address to add
+     */
+    function addSecurityCouncilMember(address _member) 
+        external 
+        onlyGovernance 
+    {
+        if (_member == address(0)) revert ZeroAddress();
+        if (securityCouncilMembers[_member]) revert AlreadySecurityCouncilMember();
+        
+        securityCouncilMembers[_member] = true;
+        securityCouncilMemberCount++;
+        
+        emit SecurityCouncilMemberAdded(_member);
+    }
+
+    /**
+     * @notice Remove a security council member
+     * @param _member Address to remove
+     */
+    function removeSecurityCouncilMember(address _member) 
+        external 
+        onlyGovernance 
+    {
+        if (!securityCouncilMembers[_member]) revert NotSecurityCouncilMember();
+        
+        securityCouncilMembers[_member] = false;
+        securityCouncilMemberCount--;
+        
+        emit SecurityCouncilMemberRemoved(_member);
+    }
+
+    // ============ Internal Functions ============
+
+    /**
+     * @notice Validate proposal parameters
+     * @param targets Array of target addresses
+     * @param values Array of ETH values
+     * @param calldatas Array of encoded function calls
+     * @return valid True if parameters are valid
+     */
+    function _validateProposal(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas
+    ) private pure returns (bool valid) {
+        uint256 length = targets.length;
+        valid = length == values.length && 
+                length == calldatas.length && 
+                length > 0 && 
+                length <= 10; // Max 10 operations per proposal
+    }
+
+    /**
+     * @notice Store proposer when proposal is created (v5 requirement)
+     */
+    function _propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description,
+        address proposer
+    ) internal override returns (uint256 proposalId) {
+        proposalId = super._propose(targets, values, calldatas, description, proposer);
+        _proposalProposers[proposalId] = proposer;
+        return proposalId;
+    }
+
+    // ============ View Functions ============
+
+    /**
+     * @notice Get custom quorum for a proposal based on its type
+     */
+    function getProposalQuorum(uint256 proposalId) 
+        public 
+        view 
+        returns (uint256) 
+    {
+        ProposalType pType = proposalTypes[proposalId];
+        uint256 supply = token().getPastTotalSupply(proposalSnapshot(proposalId));
+        
+        if (pType == ProposalType.EMERGENCY) {
+            return (supply * EMERGENCY_QUORUM) / 10000;
+        } else if (pType == ProposalType.CONSTITUTIONAL) {
+            return (supply * CONSTITUTIONAL_QUORUM) / 10000;
+        } else if (pType == ProposalType.UPGRADE) {
+            return (supply * UPGRADE_QUORUM) / 10000;
+        } else {
+            return (supply * STANDARD_QUORUM) / 10000;
+        }
+    }
+
+    /**
+     * @notice Check if address is security council member
+     */
+    function isSecurityCouncilMember(address _account) 
+        external 
+        view 
+        returns (bool) 
+    {
+        return securityCouncilMembers[_account];
+    }
+
+    // ============ Overrides Required for OpenZeppelin v5 ============
+
+    function quorum(uint256 timepoint) 
+        public 
+        view 
+        override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable, IGovernor) 
+        returns (uint256) 
+    {
+        return super.quorum(timepoint);
+    }
+
+    function votingDelay() 
+        public 
+        view 
+        override(GovernorUpgradeable, GovernorSettingsUpgradeable, IGovernor) 
+        returns (uint256) 
+    {
+        return super.votingDelay();
+    }
+
+    function votingPeriod() 
+        public 
+        view 
+        override(GovernorUpgradeable, GovernorSettingsUpgradeable, IGovernor) 
+        returns (uint256) 
+    {
+        return super.votingPeriod();
+    }
+
+    function proposalNeedsQueuing(uint256 proposalId) 
+        public 
+        view 
+        override(GovernorUpgradeable, GovernorTimelockControlUpgradeable, IGovernor) 
+        returns (bool) 
+    {
+        return super.proposalNeedsQueuing(proposalId);
+    }
+
+    function _executeOperations(
+        uint256 proposalId,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
+        super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
+    }
+
+    function _queueOperations(
+        uint256 proposalId,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint48) {
+        return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
+    }
+
+    function state(uint256 proposalId)
+        public
+        view
+        override(GovernorUpgradeable, GovernorTimelockControlUpgradeable, IGovernor)
+        returns (ProposalState)
+    {
+        if (proposalCancelled[proposalId]) {
+            return ProposalState.Canceled;
+        }
+        return super.state(proposalId);
+    }
+
+    function propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public override(GovernorUpgradeable, IGovernor) returns (uint256) {
+        uint256 proposalId = super.propose(targets, values, calldatas, description);
+        _proposalProposers[proposalId] = msg.sender;
+        return proposalId;
+    }
+
+    function proposalThreshold()
+        public
+        view
+        override(GovernorUpgradeable, GovernorSettingsUpgradeable, IGovernor)
+        returns (uint256)
+    {
+        return super.proposalThreshold();
+    }
+
+    function _cancel(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256) {
+        return super._cancel(targets, values, calldatas, descriptionHash);
+    }
+
+    function _executor()
+        internal
+        view
+        override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
+        returns (address)
+    {
+        return super._executor();
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(GovernorUpgradeable, IERC165)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    /**
+     * @notice Clock mode for v5 (using block number)
+     */
+    function clock() public view override(GovernorUpgradeable, GovernorVotesUpgradeable, IERC6372) returns (uint48) {
+        return super.clock();
+    }
+
+    /**
+     * @notice Clock mode descriptor
+     */
+    function CLOCK_MODE() public view override(GovernorUpgradeable, GovernorVotesUpgradeable, IERC6372) returns (string memory) {
+        return super.CLOCK_MODE();
+    }
+
+}
