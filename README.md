@@ -59,10 +59,3 @@ npx hardhat run scripts/deploy.ts --network localhost
 ```
 
 ---
-
-## **# Governance & Upgrades**
-Upgrades follow a **secure 3-step DAO flow**:
-
-1. **Proposal** → DAO votes via `HyraGovernor`.  
-2. **Queue** → `HyraTimelock` enforces delay (7d standard, 2d emergency).  
-3. **Execute** → `HyraProxyAdmin` performs the upgrade.  
