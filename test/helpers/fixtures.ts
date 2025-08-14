@@ -60,7 +60,7 @@ export async function deployCore() {
   const timelock = await ethers.getContractAt("HyraTimelock", timelockProxyAddr);
 
   // Make Timelock the OWNER of ProxyAdmin so upgrades are DAO-controlled
-  await (await proxyAdmin.transferOwnership(timelockProxyAddr)).wait();
+  // await (await proxyAdmin.transferOwnership(timelockProxyAddr)).wait(); 
 
   // ========= Deploy Token IMPLEMENTATION, then PROXY via HyraProxyDeployer =========
   const TokenImpl = await ethers.getContractFactory("HyraToken");
@@ -88,6 +88,9 @@ export async function deployCore() {
     "HyraToken"
   )).wait();
   const token = await ethers.getContractAt("HyraToken", tokenProxy);
+
+  await (await proxyAdmin.addProxy(tokenProxy, "HyraToken")).wait(); // add token proxy to proxy admin
+  await (await proxyAdmin.transferOwnership(timelockProxyAddr)).wait();
 
   // ========= Deploy Governor IMPLEMENTATION, then PROXY via HyraProxyDeployer =========
   const GovernorImpl = await ethers.getContractFactory("HyraGovernor");
@@ -123,6 +126,9 @@ export async function deployCore() {
   const ADMIN_ROLE = await timelock.DEFAULT_ADMIN_ROLE();
   await (await timelock.grantRole(PROPOSER_ROLE, governorProxy)).wait();
   await (await timelock.grantRole(EXECUTOR_ROLE, ethers.ZeroAddress)).wait();
+  await (await timelock.grantRole(PROPOSER_ROLE, timelockProxyAddr)).wait(); // for timelock to propose upgrades
+  await (await timelock.grantRole(EXECUTOR_ROLE, timelockProxyAddr)).wait(); // for timelock to execute upgrades
+  await (await timelock.grantRole(EXECUTOR_ROLE, deployer.address)).wait();
   await (await timelock.revokeRole(ADMIN_ROLE, deployer.address)).wait();
 
   // ========= Delegations =========

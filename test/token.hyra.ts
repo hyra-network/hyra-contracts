@@ -134,6 +134,6 @@ describe("HyraToken", function () {
     expect(balAfter).to.eq(balBefore - ethers.parseEther("1"));
   });
   
-  
+
 
 });
