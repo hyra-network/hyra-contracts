@@ -19,6 +19,37 @@ describe("HyraToken", function () {
     expect(await token.owner()).to.eq(await timelock.getAddress()); 
     // votes snapshot is exercised in governance tests
   });
+  it("pause/unpause via DAO", async function () {
+    const { token, governor, voter1, voter2 } = await loadFixture(deployCore);
 
+    // pause 
+    await proposeVoteQueueExecute(
+      governor,
+      [await token.getAddress()],
+      [0n],
+      [token.interface.encodeFunctionData("pause", [])],
+      "pause token",
+      ProposalType.STANDARD,
+      { voter1, voter2 }
+    );
+    expect(await token.paused()).to.eq(true);
+
+    // unpause
+    await proposeVoteQueueExecute(
+      governor,
+      [await token.getAddress()],
+      [0n],
+      [token.interface.encodeFunctionData("unpause", [])],
+      "unpause token",
+      ProposalType.STANDARD,
+      { voter1, voter2 }
+    );
+    expect(await token.paused()).to.eq(false);
+  });
+
+
+
+  
+  
 
 });
