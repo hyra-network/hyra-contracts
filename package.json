@@ -5,7 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "compile": "hardhat compile",
-    "test_hyra_contract": "hardhat test test/HyraToken.test.ts"
+    "test:token": "hardhat test test/token.hyra.ts"
   },
   "keywords": [],
   "author": "",
