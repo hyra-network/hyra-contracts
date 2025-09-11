@@ -7,6 +7,7 @@ import "../core/HyraTimelock.sol";
 import "../proxy/HyraProxyAdmin.sol";
 import "../proxy/HyraProxyDeployer.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "../proxy/HyraTransparentUpgradeableProxy.sol";
 
 /**
  * @title HyraDAOInitializer
@@ -75,7 +76,7 @@ contract HyraDAOInitializer {
         }
         
         // 1. Deploy ProxyAdmin (with initial owner)
-        result.proxyAdmin = address(new HyraProxyAdmin(msg.sender));
+        result.proxyAdmin = address(new HyraProxyAdmin(address(this)));
         
         // 2. Deploy ProxyDeployer
         result.proxyDeployer = address(new HyraProxyDeployer());
@@ -85,17 +86,17 @@ contract HyraDAOInitializer {
         
         // 4. Deploy Timelock proxy with initial configuration
         address[] memory proposers = new address[](1);
-        proposers[0] = address(0); // Will be set to Governor later
+        proposers[0] = address(this); // Temporary proposer
         
         address[] memory executors = new address[](1);
-        executors[0] = address(0); // Anyone can execute
+        executors[0] = address(this); // Temporary executor
         
         bytes memory timelockInitData = abi.encodeWithSelector(
             HyraTimelock.initialize.selector,
             config.timelockDelay,
             proposers,
             executors,
-            msg.sender // Temporary admin
+            address(this) // Set contract as temporary admin
         );
         
         result.timelockProxy = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
@@ -181,6 +182,7 @@ contract HyraDAOInitializer {
         timelock.grantRole(PROPOSER_ROLE, result.governorProxy);
         
         // Grant executor role to address(0) - anyone can execute
+        // Note: This allows anyone to execute proposals after deployment
         timelock.grantRole(EXECUTOR_ROLE, address(0));
         
         // Setup security council
@@ -290,7 +292,7 @@ contract HyraDAOInitializer {
                 uint8(nonce)
             )))));
         }
-        // Simplified for larger nonces
-        return address(uint160(uint256(keccak256(abi.encodePacked(deployer, nonce)))));
+        // For nonces > 255, revert as RLP encoding becomes complex
+        revert("Nonce too large for address computation");
     }
 }

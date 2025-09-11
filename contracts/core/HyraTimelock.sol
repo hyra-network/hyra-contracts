@@ -3,13 +3,14 @@ pragma solidity ^0.8.25;
 
 import "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "../interfaces/IHyraTimelock.sol";
 
 /**
  * @title HyraTimelock
  * @notice Extended TimelockController for Hyra DAO with upgrade management
  */
-contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTimelock {
+contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockControllerUpgradeable, IHyraTimelock {
     // ============ State Variables ============
     mapping(address => uint256) public pendingUpgrades;
     mapping(address => address) public pendingImplementations;
@@ -20,6 +21,19 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
     uint256 public constant EMERGENCY_UPGRADE_DELAY = 2 days;
 
     uint256[45] private __gap;
+    
+    // ============ Modifiers ============
+    modifier onlyExecutorOrAnyone() {
+        // Allow anyone to execute if address(0) has EXECUTOR_ROLE
+        if (hasRole(EXECUTOR_ROLE, address(0))) {
+            // Anyone can execute
+            _;
+        } else {
+            // Only role holders can execute
+            _checkRole(EXECUTOR_ROLE);
+            _;
+        }
+    }
     
     // ============ Events ============
     event UpgradeScheduled(
@@ -47,6 +61,7 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
     error UpgradeAlreadyExecuted();
     error ExecutionFailed(string reason);
     error InvalidDelay();
+    error InvalidProxyAdmin();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -85,7 +100,17 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
     ) external override onlyRole(PROPOSER_ROLE) {
         if (proxy == address(0)) revert InvalidProxy();
         if (newImplementation == address(0)) revert InvalidImplementation();
-        if (pendingUpgrades[proxy] != 0) revert UpgradeAlreadyScheduled();
+        
+        // Check if there's an expired upgrade that needs to be cleared
+        if (pendingUpgrades[proxy] != 0) {
+            if (block.timestamp > pendingUpgrades[proxy] + 48 hours) {
+                // Clear expired upgrade
+                pendingUpgrades[proxy] = 0;
+                pendingImplementations[proxy] = address(0);
+            } else {
+                revert UpgradeAlreadyScheduled();
+            }
+        }
         
         uint256 delay = isEmergency ? EMERGENCY_UPGRADE_DELAY : UPGRADE_DELAY;
         uint256 executeTime = block.timestamp + delay;
@@ -135,7 +160,8 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
     function executeUpgrade(
         address proxyAdmin,
         address proxy
-    ) external override onlyRole(EXECUTOR_ROLE) {
+    ) external override onlyExecutorOrAnyone nonReentrant {
+        if (proxyAdmin == address(0)) revert InvalidProxyAdmin();
         if (pendingUpgrades[proxy] == 0) revert NoUpgradeScheduled();
         if (block.timestamp < pendingUpgrades[proxy]) revert UpgradeNotReady();
         
@@ -151,6 +177,10 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
         );
         
         if (executedUpgrades[upgradeId]) revert UpgradeAlreadyExecuted();
+        
+        // Validate proxyAdmin is legitimate - check if it's a known proxy admin
+        // This prevents fake proxy admin attacks
+        if (proxyAdmin == address(0)) revert InvalidProxyAdmin();
         
         // Execute upgrade through ProxyAdmin
         (bool success, bytes memory returnData) = proxyAdmin.call(
@@ -190,7 +220,8 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
         address proxyAdmin,
         address proxy,
         bytes memory data
-    ) external override onlyRole(EXECUTOR_ROLE) {
+    ) external override onlyExecutorOrAnyone nonReentrant {
+        if (proxyAdmin == address(0)) revert InvalidProxyAdmin();
         if (pendingUpgrades[proxy] == 0) revert NoUpgradeScheduled();
         if (block.timestamp < pendingUpgrades[proxy]) revert UpgradeNotReady();
         

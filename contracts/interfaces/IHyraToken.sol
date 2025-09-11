@@ -25,6 +25,5 @@ interface IHyraToken is IERC20, IVotes {
     // Essential view functions for external contracts
     function isMinter(address account) external view returns (bool);
     function mintAllowances(address minter) external view returns (uint256);
-    function governanceAddress() external view returns (address);
     function totalMintedSupply() external view returns (uint256);
 }

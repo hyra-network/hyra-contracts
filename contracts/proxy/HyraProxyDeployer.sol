@@ -2,6 +2,7 @@
 pragma solidity ^0.8.25;
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "./HyraTransparentUpgradeableProxy.sol";
 import "../interfaces/IHyraProxyDeployer.sol";
 
 /**
@@ -69,7 +70,7 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         if (bytes(contractType).length == 0) revert InvalidContractType();
         
         proxy = address(
-            new TransparentUpgradeableProxy(
+            new HyraTransparentUpgradeableProxy(
                 implementation,
                 proxyAdmin,
                 initData
@@ -84,7 +85,7 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
             proxyAdmin: proxyAdmin,
             contractType: contractType,
             deploymentTime: block.timestamp,
-            deployer: msg.sender,
+            deployer: tx.origin, // Use tx.origin for actual deployer
             nonce: deploymentNonce,
             salt: bytes32(0) // Not deterministic
         });
@@ -117,19 +118,21 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         bytes32 salt,
         string memory contractType
     ) external returns (address proxy) {
+        // Generate unique salt to prevent frontrunning
+        bytes32 uniqueSalt = keccak256(abi.encodePacked(salt, msg.sender, block.timestamp));
         if (implementation == address(0)) revert InvalidImplementation();
         if (proxyAdmin == address(0)) revert InvalidAdmin();
         if (bytes(contractType).length == 0) revert InvalidContractType();
         
         // Create bytecode for CREATE2
         bytes memory bytecode = abi.encodePacked(
-            type(TransparentUpgradeableProxy).creationCode,
+            type(HyraTransparentUpgradeableProxy).creationCode,
             abi.encode(implementation, proxyAdmin, initData)
         );
         
-        // Deploy with CREATE2
+        // Deploy with CREATE2 using unique salt
         assembly {
-            proxy := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+            proxy := create2(0, add(bytecode, 0x20), mload(bytecode), uniqueSalt)
         }
         
         if (proxy == address(0)) revert DeploymentFailed();
@@ -141,7 +144,7 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
             proxyAdmin: proxyAdmin,
             contractType: contractType,
             deploymentTime: block.timestamp,
-            deployer: msg.sender,
+            deployer: tx.origin, // Use tx.origin for actual deployer
             nonce: deploymentNonce,
             salt: salt
         });
@@ -236,10 +239,11 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         view 
         returns (address[] memory proxies) 
     {
+        uint256 length = allProxies.length;
         uint256 count = 0;
         
         // Count matching proxies
-        for (uint256 i = 0; i < allProxies.length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             if (keccak256(bytes(deployedProxies[allProxies[i]].contractType)) == 
                 keccak256(bytes(contractType))) {
                 count++;
@@ -250,7 +254,7 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         proxies = new address[](count);
         uint256 index = 0;
         
-        for (uint256 i = 0; i < allProxies.length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             if (keccak256(bytes(deployedProxies[allProxies[i]].contractType)) == 
                 keccak256(bytes(contractType))) {
                 proxies[index++] = allProxies[i];
@@ -268,10 +272,11 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         view 
         returns (address[] memory proxies) 
     {
+        uint256 length = allProxies.length;
         uint256 count = 0;
         
         // Count matching proxies
-        for (uint256 i = 0; i < allProxies.length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             if (deployedProxies[allProxies[i]].deployer == deployer) {
                 count++;
             }
@@ -281,7 +286,7 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         proxies = new address[](count);
         uint256 index = 0;
         
-        for (uint256 i = 0; i < allProxies.length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             if (deployedProxies[allProxies[i]].deployer == deployer) {
                 proxies[index++] = allProxies[i];
             }
