@@ -3,23 +3,51 @@ pragma solidity ^0.8.25;
 
 import "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "../interfaces/IHyraTimelock.sol";
+import "../security/SecureExecutorManager.sol";
+import "../security/ProxyAdminValidator.sol";
 
 /**
  * @title HyraTimelock
  * @notice Extended TimelockController for Hyra DAO with upgrade management
  */
-contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTimelock {
+contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockControllerUpgradeable, IHyraTimelock {
     // ============ State Variables ============
     mapping(address => uint256) public pendingUpgrades;
     mapping(address => address) public pendingImplementations;
     mapping(bytes32 => bool) public executedUpgrades;
     mapping(address => uint256) public upgradeNonce;
     
+    // Secure Executor Manager for replacing address(0) executors
+    SecureExecutorManager public executorManager;
+    
+    // Proxy Admin Validator for preventing fake proxy admin attacks
+    ProxyAdminValidator public proxyAdminValidator;
+    
     uint256 public constant UPGRADE_DELAY = 7 days;
     uint256 public constant EMERGENCY_UPGRADE_DELAY = 2 days;
 
     uint256[45] private __gap;
+    
+    // ============ Modifiers ============
+    modifier onlyExecutorOrSecureManager() {
+        // Check if using secure executor manager
+        if (address(executorManager) != address(0)) {
+            require(
+                executorManager.isAuthorizedExecutor(msg.sender),
+                "Only authorized executors can execute"
+            );
+            _;
+        } else if (hasRole(EXECUTOR_ROLE, address(0))) {
+            // Fallback: allow anyone to execute if address(0) has EXECUTOR_ROLE
+            _;
+        } else {
+            // Only role holders can execute
+            _checkRole(EXECUTOR_ROLE);
+            _;
+        }
+    }
     
     // ============ Events ============
     event UpgradeScheduled(
@@ -47,6 +75,7 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
     error UpgradeAlreadyExecuted();
     error ExecutionFailed(string reason);
     error InvalidDelay();
+    error InvalidProxyAdmin();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -69,6 +98,24 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
         __TimelockController_init(minDelay, proposers, executors, admin);
     }
 
+    // ============ Executor Management ============
+    
+    /**
+     * @notice Set the Secure Executor Manager (only admin)
+     * @param _executorManager Address of the Secure Executor Manager
+     */
+    function setExecutorManager(SecureExecutorManager _executorManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        executorManager = _executorManager;
+    }
+    
+    /**
+     * @notice Set the Proxy Admin Validator (only admin)
+     * @param _proxyAdminValidator Address of the Proxy Admin Validator
+     */
+    function setProxyAdminValidator(ProxyAdminValidator _proxyAdminValidator) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        proxyAdminValidator = _proxyAdminValidator;
+    }
+
     // ============ Upgrade Management ============
 
     /**
@@ -85,7 +132,17 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
     ) external override onlyRole(PROPOSER_ROLE) {
         if (proxy == address(0)) revert InvalidProxy();
         if (newImplementation == address(0)) revert InvalidImplementation();
-        if (pendingUpgrades[proxy] != 0) revert UpgradeAlreadyScheduled();
+        
+        // Check if there's an expired upgrade that needs to be cleared
+        if (pendingUpgrades[proxy] != 0) {
+            if (block.timestamp > pendingUpgrades[proxy] + 48 hours) {
+                // Clear expired upgrade
+                pendingUpgrades[proxy] = 0;
+                pendingImplementations[proxy] = address(0);
+            } else {
+                revert UpgradeAlreadyScheduled();
+            }
+        }
         
         uint256 delay = isEmergency ? EMERGENCY_UPGRADE_DELAY : UPGRADE_DELAY;
         uint256 executeTime = block.timestamp + delay;
@@ -135,7 +192,8 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
     function executeUpgrade(
         address proxyAdmin,
         address proxy
-    ) external override onlyRole(EXECUTOR_ROLE) {
+    ) external override onlyExecutorOrSecureManager nonReentrant {
+        if (proxyAdmin == address(0)) revert InvalidProxyAdmin();
         if (pendingUpgrades[proxy] == 0) revert NoUpgradeScheduled();
         if (block.timestamp < pendingUpgrades[proxy]) revert UpgradeNotReady();
         
@@ -151,6 +209,18 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
         );
         
         if (executedUpgrades[upgradeId]) revert UpgradeAlreadyExecuted();
+        
+        // Validate proxyAdmin is legitimate - check if it's a known proxy admin
+        // This prevents fake proxy admin attacks
+        if (proxyAdmin == address(0)) revert InvalidProxyAdmin();
+        
+        // Check if proxy admin validator is set and validate the proxy admin
+        if (address(proxyAdminValidator) != address(0)) {
+            require(
+                proxyAdminValidator.isAuthorizedProxyAdmin(proxyAdmin),
+                "Proxy admin not authorized"
+            );
+        }
         
         // Execute upgrade through ProxyAdmin
         (bool success, bytes memory returnData) = proxyAdmin.call(
@@ -190,7 +260,8 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
         address proxyAdmin,
         address proxy,
         bytes memory data
-    ) external override onlyRole(EXECUTOR_ROLE) {
+    ) external override onlyExecutorOrSecureManager nonReentrant {
+        if (proxyAdmin == address(0)) revert InvalidProxyAdmin();
         if (pendingUpgrades[proxy] == 0) revert NoUpgradeScheduled();
         if (block.timestamp < pendingUpgrades[proxy]) revert UpgradeNotReady();
         
@@ -205,6 +276,18 @@ contract HyraTimelock is Initializable, TimelockControllerUpgradeable, IHyraTime
         );
         
         if (executedUpgrades[upgradeId]) revert UpgradeAlreadyExecuted();
+        
+        // Validate proxyAdmin is legitimate - check if it's a known proxy admin
+        // This prevents fake proxy admin attacks
+        if (proxyAdmin == address(0)) revert InvalidProxyAdmin();
+        
+        // Check if proxy admin validator is set and validate the proxy admin
+        if (address(proxyAdminValidator) != address(0)) {
+            require(
+                proxyAdminValidator.isAuthorizedProxyAdmin(proxyAdmin),
+                "Proxy admin not authorized"
+            );
+        }
         
         // Execute upgrade with call through ProxyAdmin
         (bool success, bytes memory returnData) = proxyAdmin.call(

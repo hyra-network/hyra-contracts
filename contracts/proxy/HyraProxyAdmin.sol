@@ -8,6 +8,9 @@ import "../interfaces/IHyraProxyAdmin.sol";
 /**
  * @title HyraProxyAdmin
  * @notice Extended ProxyAdmin for managing Hyra protocol proxies
+ * @dev SECURITY WARNING: This contract has upgrade authority over all protocol contracts.
+ *      Ownership should be transferred to a multisig wallet or timelock contract.
+ *      See: https://docs.hyra.network/security for more information.
  */
 contract HyraProxyAdmin is ProxyAdmin, IHyraProxyAdmin {
     // ============ State Variables ============
@@ -25,6 +28,7 @@ contract HyraProxyAdmin is ProxyAdmin, IHyraProxyAdmin {
     error ProxyAlreadyManaged();
     error ProxyNotManaged();
     error InvalidProxy();
+    error InvalidProxyAddress();
     error ZeroAddress();
     error ArrayLengthMismatch();
     error IndexOutOfBounds();
@@ -194,6 +198,8 @@ contract HyraProxyAdmin is ProxyAdmin, IHyraProxyAdmin {
         view 
         returns (address impl) 
     {
+        if (proxyAddress == address(0)) revert InvalidProxyAddress();
+        
         // Use low-level staticcall to get implementation
         // This avoids interface issues
         bytes memory data = abi.encodeWithSignature("implementation()");

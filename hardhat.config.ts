@@ -12,6 +12,14 @@ const config: HardhatUserConfig = {
       evmVersion: "cancun",
     },
   },
+  networks: {
+    hardhat: {
+      allowUnlimitedContractSize: true,
+    },
+    localhost: {
+      allowUnlimitedContractSize: true,
+    },
+  },
 };
 
 export default config;

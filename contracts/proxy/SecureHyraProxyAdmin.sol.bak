@@ -1,0 +1,505 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.25;
+
+import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "../interfaces/IHyraProxyAdmin.sol";
+import "../security/MultiSigRoleManager.sol";
+import "../security/TimeLockActions.sol";
+
+/**
+ * @title SecureHyraProxyAdmin
+ * @notice Secure ProxyAdmin with multi-signature role management
+ * @dev This contract replaces the centralized owner role with multi-signature requirements
+ *      All privileged operations now require multiple signatures and time delays
+ */
+contract SecureHyraProxyAdmin is ProxyAdmin, IHyraProxyAdmin {
+    // ============ State Variables ============
+    mapping(address => bool) private _isManaged;
+    address[] public managedProxies;
+    mapping(address => string) public proxyNames;
+    
+    // Security contracts
+    MultiSigRoleManager public roleManager;
+    TimeLockActions public timeLockActions;
+    
+    // ============ Events ============
+    event ProxyAdded(address indexed proxy, string name);
+    event ProxyRemoved(address indexed proxy);
+    event ProxyNameUpdated(address indexed proxy, string newName);
+    event BatchUpgradeExecuted(uint256 count);
+    event SecurityContractsUpdated(address indexed roleManager, address indexed timeLockActions);
+    
+    // ============ Errors ============
+    error ProxyAlreadyManaged();
+    error ProxyNotManaged();
+    error InvalidProxy();
+    error InvalidProxyAddress();
+    error ZeroAddress();
+    error ArrayLengthMismatch();
+    error IndexOutOfBounds();
+    error InvalidSecurityContract();
+
+    /**
+     * @notice Constructor
+     * @param initialOwner The initial owner of the ProxyAdmin
+     * @param _roleManager Address of the MultiSigRoleManager
+     * @param _timeLockActions Address of the TimeLockActions contract
+     */
+    constructor(
+        address initialOwner,
+        address _roleManager,
+        address _timeLockActions
+    ) ProxyAdmin(initialOwner) {
+        if (_roleManager == address(0) || _timeLockActions == address(0)) {
+            revert ZeroAddress();
+        }
+        
+        roleManager = MultiSigRoleManager(_roleManager);
+        timeLockActions = TimeLockActions(_timeLockActions);
+        
+        emit SecurityContractsUpdated(_roleManager, _timeLockActions);
+    }
+
+    /**
+     * @notice Add a proxy to management (requires multi-signature)
+     * @param proxy Address of the proxy to manage
+     * @param name Human-readable name for the proxy
+     */
+    function addProxy(address proxy, string memory name) external override {
+        if (proxy == address(0)) revert InvalidProxyAddress();
+        if (_isManaged[proxy]) revert ProxyAlreadyManaged();
+        
+        // Add through TimeLockActions
+        bytes memory data = abi.encodeWithSelector(
+            this._addProxy.selector,
+            proxy,
+            name
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            data,
+            roleManager.UPGRADER_ROLE(),
+            0 // Use default delay
+        );
+    }
+
+    /**
+     * @notice Remove a proxy from management (requires multi-signature)
+     * @param proxy Address of the proxy to remove
+     */
+    function removeProxy(address proxy) external override {
+        if (!_isManaged[proxy]) revert ProxyNotManaged();
+        
+        // Remove through TimeLockActions
+        bytes memory data = abi.encodeWithSelector(
+            this._removeProxy.selector,
+            proxy
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            data,
+            roleManager.UPGRADER_ROLE(),
+            0 // Use default delay
+        );
+    }
+
+    /**
+     * @notice Update the name of a managed proxy (requires multi-signature)
+     * @param proxy Address of the proxy
+     * @param newName New name for the proxy
+     */
+    function updateProxyName(address proxy, string memory newName) external {
+        if (!_isManaged[proxy]) revert ProxyNotManaged();
+        
+        // Update through TimeLockActions
+        bytes memory data = abi.encodeWithSelector(
+            this._updateProxyName.selector,
+            proxy,
+            newName
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            data,
+            roleManager.UPGRADER_ROLE(),
+            0 // Use default delay
+        );
+    }
+
+    /**
+     * @notice Batch upgrade multiple proxies (requires multi-signature)
+     * @param proxies Array of proxy addresses
+     * @param implementations Array of new implementation addresses
+     */
+    function batchUpgrade(
+        address[] calldata proxies,
+        address[] calldata implementations
+    ) external override {
+        if (proxies.length == 0 || proxies.length > 10) revert ArrayLengthMismatch();
+        if (proxies.length != implementations.length) revert ArrayLengthMismatch();
+        
+        // Batch upgrade through TimeLockActions
+        bytes memory data = abi.encodeWithSelector(
+            this._batchUpgrade.selector,
+            proxies,
+            implementations
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            data,
+            roleManager.UPGRADER_ROLE(),
+            0 // Use default delay
+        );
+    }
+
+    /**
+     * @notice Batch upgrade multiple proxies with initialization calls (requires multi-signature)
+     * @param proxies Array of proxy addresses
+     * @param implementations Array of new implementation addresses
+     * @param initData Array of initialization data
+     */
+    function batchUpgradeAndCall(
+        address[] calldata proxies,
+        address[] calldata implementations,
+        bytes[] calldata initData
+    ) external override {
+        if (proxies.length == 0 || proxies.length > 10) revert ArrayLengthMismatch();
+        if (proxies.length != implementations.length) revert ArrayLengthMismatch();
+        if (proxies.length != initData.length) revert ArrayLengthMismatch();
+        
+        // Batch upgrade with call through TimeLockActions
+        bytes memory data = abi.encodeWithSelector(
+            this._batchUpgradeAndCall.selector,
+            proxies,
+            implementations,
+            initData
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            data,
+            roleManager.UPGRADER_ROLE(),
+            0 // Use default delay
+        );
+    }
+
+    /**
+     * @notice Upgrade a single proxy (requires multi-signature)
+     * @param proxy Address of the proxy
+     * @param implementation Address of the new implementation
+     */
+    function upgradeProxy(address proxy, address implementation) external {
+        if (proxy == address(0)) revert InvalidProxyAddress();
+        if (implementation == address(0)) revert InvalidProxyAddress();
+        
+        // Upgrade through TimeLockActions
+        bytes memory data = abi.encodeWithSelector(
+            this._upgradeProxy.selector,
+            proxy,
+            implementation
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            data,
+            roleManager.UPGRADER_ROLE(),
+            0 // Use default delay
+        );
+    }
+
+    /**
+     * @notice Upgrade a single proxy with initialization call (requires multi-signature)
+     * @param proxy Address of the proxy
+     * @param implementation Address of the new implementation
+     * @param data Initialization data
+     */
+    function upgradeProxyAndCall(
+        address proxy,
+        address implementation,
+        bytes calldata data
+    ) external {
+        if (proxy == address(0)) revert InvalidProxyAddress();
+        if (implementation == address(0)) revert InvalidProxyAddress();
+        
+        // Upgrade with call through TimeLockActions
+        bytes memory actionData = abi.encodeWithSelector(
+            this._upgradeProxyAndCall.selector,
+            proxy,
+            implementation,
+            data
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            actionData,
+            roleManager.UPGRADER_ROLE(),
+            0 // Use default delay
+        );
+    }
+
+    // ============ Internal Functions (called by TimeLockActions) ============
+
+    /**
+     * @notice Internal function to add proxy (called by TimeLockActions)
+     * @param proxy Address of the proxy to manage
+     * @param name Human-readable name for the proxy
+     */
+    function _addProxy(address proxy, string memory name) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        _isManaged[proxy] = true;
+        managedProxies.push(proxy);
+        proxyNames[proxy] = name;
+        
+        emit ProxyAdded(proxy, name);
+    }
+
+    /**
+     * @notice Internal function to remove proxy (called by TimeLockActions)
+     * @param proxy Address of the proxy to remove
+     */
+    function _removeProxy(address proxy) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        _isManaged[proxy] = false;
+        delete proxyNames[proxy];
+        
+        // Remove from array
+        for (uint256 i = 0; i < managedProxies.length; i++) {
+            if (managedProxies[i] == proxy) {
+                managedProxies[i] = managedProxies[managedProxies.length - 1];
+                managedProxies.pop();
+                break;
+            }
+        }
+        
+        emit ProxyRemoved(proxy);
+    }
+
+    /**
+     * @notice Internal function to update proxy name (called by TimeLockActions)
+     * @param proxy Address of the proxy
+     * @param newName New name for the proxy
+     */
+    function _updateProxyName(address proxy, string memory newName) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        proxyNames[proxy] = newName;
+        emit ProxyNameUpdated(proxy, newName);
+    }
+
+    /**
+     * @notice Internal function to batch upgrade (called by TimeLockActions)
+     * @param proxies Array of proxy addresses
+     * @param implementations Array of new implementation addresses
+     */
+    function _batchUpgrade(
+        address[] calldata proxies,
+        address[] calldata implementations
+    ) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        for (uint256 i = 0; i < proxies.length; i++) {
+            if (!_isManaged[proxies[i]]) revert ProxyNotManaged();
+            
+            ITransparentUpgradeableProxy(proxies[i]).upgradeTo(implementations[i]);
+        }
+        
+        emit BatchUpgradeExecuted(proxies.length);
+    }
+
+    /**
+     * @notice Internal function to batch upgrade with call (called by TimeLockActions)
+     * @param proxies Array of proxy addresses
+     * @param implementations Array of new implementation addresses
+     * @param initData Array of initialization data
+     */
+    function _batchUpgradeAndCall(
+        address[] calldata proxies,
+        address[] calldata implementations,
+        bytes[] calldata initData
+    ) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        for (uint256 i = 0; i < proxies.length; i++) {
+            if (!_isManaged[proxies[i]]) revert ProxyNotManaged();
+            
+            ITransparentUpgradeableProxy(proxies[i]).upgradeToAndCall(implementations[i], initData[i]);
+        }
+        
+        emit BatchUpgradeExecuted(proxies.length);
+    }
+
+    /**
+     * @notice Internal function to upgrade proxy (called by TimeLockActions)
+     * @param proxy Address of the proxy
+     * @param implementation Address of the new implementation
+     */
+    function _upgradeProxy(address proxy, address implementation) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        if (!_isManaged[proxy]) revert ProxyNotManaged();
+        
+        ITransparentUpgradeableProxy(proxy).upgradeTo(implementation);
+    }
+
+    /**
+     * @notice Internal function to upgrade proxy with call (called by TimeLockActions)
+     * @param proxy Address of the proxy
+     * @param implementation Address of the new implementation
+     * @param data Initialization data
+     */
+    function _upgradeProxyAndCall(
+        address proxy,
+        address implementation,
+        bytes calldata data
+    ) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        if (!_isManaged[proxy]) revert ProxyNotManaged();
+        
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(implementation, data);
+    }
+
+    /**
+     * @notice Update security contracts (requires multi-signature)
+     * @param _roleManager New role manager address
+     * @param _timeLockActions New time lock actions address
+     */
+    function updateSecurityContracts(
+        address _roleManager,
+        address _timeLockActions
+    ) external {
+        if (_roleManager == address(0) || _timeLockActions == address(0)) {
+            revert ZeroAddress();
+        }
+        
+        // This function requires multi-signature approval
+        bytes memory data = abi.encodeWithSelector(
+            this._updateSecurityContracts.selector,
+            _roleManager,
+            _timeLockActions
+        );
+        
+        bytes32 actionHash = timeLockActions.scheduleAction(
+            address(this),
+            data,
+            roleManager.GOVERNANCE_ROLE(),
+            0 // Use default delay
+        );
+    }
+    
+    /**
+     * @notice Internal function to update security contracts (called by TimeLockActions)
+     * @param _roleManager New role manager address
+     * @param _timeLockActions New time lock actions address
+     */
+    function _updateSecurityContracts(
+        address _roleManager,
+        address _timeLockActions
+    ) external {
+        // Only TimeLockActions can call this
+        require(msg.sender == address(timeLockActions), "Only TimeLockActions");
+        
+        roleManager = MultiSigRoleManager(_roleManager);
+        timeLockActions = TimeLockActions(_timeLockActions);
+        
+        emit SecurityContractsUpdated(_roleManager, _timeLockActions);
+    }
+
+    // ============ View Functions ============
+
+    /**
+     * @notice Check if a proxy is managed
+     * @param proxy Address of the proxy
+     * @return managed True if the proxy is managed
+     */
+    function isManaged(address proxy) external view returns (bool) {
+        return _isManaged[proxy];
+    }
+
+    /**
+     * @notice Get the name of a managed proxy
+     * @param proxy Address of the proxy
+     * @return name The name of the proxy
+     */
+    function getProxyName(address proxy) external view returns (string memory) {
+        return proxyNames[proxy];
+    }
+
+    /**
+     * @notice Get all managed proxies
+     * @return proxies Array of managed proxy addresses
+     */
+    function getManagedProxies() external view returns (address[] memory) {
+        return managedProxies;
+    }
+
+    /**
+     * @notice Get the number of managed proxies
+     * @return count The number of managed proxies
+     */
+    function getManagedProxyCount() external view returns (uint256) {
+        return managedProxies.length;
+    }
+
+    /**
+     * @notice Get the current security contracts
+     * @return _roleManager Address of the role manager
+     * @return _timeLockActions Address of the time lock actions contract
+     */
+    function getSecurityContracts() external view returns (address _roleManager, address _timeLockActions) {
+        return (address(roleManager), address(timeLockActions));
+    }
+
+    /**
+     * @notice Get proxy admin for a proxy
+     * @param proxy Address of the proxy
+     * @return admin Address of the proxy admin
+     */
+    function getProxyAdmin(address proxy) external view returns (address) {
+        // If we manage this proxy, we are the admin
+        return _isManaged[proxy] ? address(this) : address(0);
+    }
+
+    /**
+     * @notice Get proxy implementation
+     * @param proxy Address of the proxy
+     * @return implementation Address of the implementation
+     */
+    function getProxyImplementation(address proxy) external view returns (address) {
+        if (!_isManaged[proxy]) return address(0);
+        
+        // This would require the proxy to implement a getImplementation function
+        // For now, return address(0) as this is a simplified implementation
+        return address(0);
+    }
+
+    /**
+     * @notice Check if an address has upgrade permissions
+     * @param account Address to check
+     * @return hasPermission True if the address has upgrade permissions
+     */
+    function hasUpgradePermission(address account) external view returns (bool) {
+        return roleManager.hasRole(roleManager.UPGRADER_ROLE(), account);
+    }
+
+    /**
+     * @notice Get upgrade role
+     * @return role The upgrade role
+     */
+    function getUpgradeRole() external view returns (bytes32) {
+        return roleManager.UPGRADER_ROLE();
+    }
+}

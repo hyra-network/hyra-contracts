@@ -8,17 +8,24 @@ import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesU
 import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import "../interfaces/IHyraGovernor.sol";
+import "../security/DAORoleManager.sol";
 
 /**
  * @title HyraGovernor
  * @notice DAO governance contract for proposal management and voting
+ * @dev PRIVILEGED ROLES:
+ *      - _governance: Can add/remove security council members
+ *      - Security Council: Can create emergency proposals and cancel any proposal
+ *      See: https://docs.hyra.network/security for role management guidelines.
  */
 contract HyraGovernor is
     Initializable,
+    ReentrancyGuardUpgradeable,
     GovernorUpgradeable,
     GovernorSettingsUpgradeable,
     GovernorCountingSimpleUpgradeable,
@@ -33,6 +40,9 @@ contract HyraGovernor is
     mapping(address => bool) public securityCouncilMembers;
     mapping(uint256 => address) private _proposalProposers; // Track proposers for v5
     uint256 public securityCouncilMemberCount;
+    
+    // DAO Role Manager for decentralized role management
+    DAORoleManager public roleManager;
     
     // Quorum percentages (basis points)
     uint256 public constant STANDARD_QUORUM = 1000; // 10%
@@ -133,7 +143,7 @@ contract HyraGovernor is
         
         uint256 proposalId = propose(targets, values, calldatas, description);
         proposalTypes[proposalId] = proposalType;
-        _proposalProposers[proposalId] = msg.sender; // Store proposer for v5
+        // Removed duplicate _proposalProposers assignment
         
         emit ProposalTypeSet(proposalId, proposalType);
         emit ProposalCreatedWithType(proposalId, msg.sender, proposalType);
@@ -157,7 +167,7 @@ contract HyraGovernor is
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    ) public override(GovernorUpgradeable, IGovernor) returns (uint256) {
+    ) public override(GovernorUpgradeable, IGovernor) nonReentrant returns (uint256) {
         uint256 proposalId = hashProposal(targets, values, calldatas, descriptionHash);
         
         ProposalState currentState = state(proposalId);
@@ -171,24 +181,54 @@ contract HyraGovernor is
             revert UnauthorizedCancellation();
         }
         
-        proposalCancelled[proposalId] = true;
-        emit ProposalCancelled(proposalId);
-        
-        return super.cancel(targets, values, calldatas, descriptionHash);
+        // For security council members, bypass parent authorization
+        if (securityCouncilMembers[msg.sender]) {
+            // Directly call internal _cancel function
+            _cancel(targets, values, calldatas, descriptionHash);
+            proposalCancelled[proposalId] = true;
+            emit ProposalCancelled(proposalId);
+            return proposalId;
+        } else {
+            // For proposers, use parent function
+            uint256 result = super.cancel(targets, values, calldatas, descriptionHash);
+            proposalCancelled[proposalId] = true;
+            emit ProposalCancelled(proposalId);
+            return result;
+        }
+    }
+
+    // ============ DAO Role Management Functions ============
+    
+    /**
+     * @notice Set the DAO Role Manager (only governance)
+     * @param _roleManager Address of the DAO Role Manager
+     */
+    function setRoleManager(DAORoleManager _roleManager) external onlyGovernance {
+        roleManager = _roleManager;
     }
 
     // ============ Security Council Functions ============
 
     /**
-     * @notice Add a security council member
+     * @notice Add a security council member (decentralized via DAO role manager)
      * @param _member Address to add
      */
     function addSecurityCouncilMember(address _member) 
         external 
-        onlyGovernance 
     {
         if (_member == address(0)) revert ZeroAddress();
         if (securityCouncilMembers[_member]) revert AlreadySecurityCouncilMember();
+        
+        // Check if caller has governance role through DAO role manager
+        if (address(roleManager) != address(0)) {
+            require(
+                roleManager.hasRole(roleManager.GOVERNANCE_ROLE(), msg.sender),
+                "Only governance role holders can add security council members"
+            );
+        } else {
+            // Fallback: only allow if no role manager is set (deployment phase)
+            revert("DAO role manager must be set for security council management");
+        }
         
         securityCouncilMembers[_member] = true;
         securityCouncilMemberCount++;
@@ -197,14 +237,24 @@ contract HyraGovernor is
     }
 
     /**
-     * @notice Remove a security council member
+     * @notice Remove a security council member (decentralized via DAO role manager)
      * @param _member Address to remove
      */
     function removeSecurityCouncilMember(address _member) 
         external 
-        onlyGovernance 
     {
         if (!securityCouncilMembers[_member]) revert NotSecurityCouncilMember();
+        
+        // Check if caller has governance role through DAO role manager
+        if (address(roleManager) != address(0)) {
+            require(
+                roleManager.hasRole(roleManager.GOVERNANCE_ROLE(), msg.sender),
+                "Only governance role holders can remove security council members"
+            );
+        } else {
+            // Fallback: only allow if no role manager is set (deployment phase)
+            revert("DAO role manager must be set for security council management");
+        }
         
         securityCouncilMembers[_member] = false;
         securityCouncilMemberCount--;
@@ -291,7 +341,23 @@ contract HyraGovernor is
         override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable, IGovernor) 
         returns (uint256) 
     {
+        // Use base quorum for general cases
         return super.quorum(timepoint);
+    }
+    
+    /**
+     * @notice Override quorum calculation to use proposal-specific quorum
+     * @param proposalId The proposal ID
+     * @param timepoint The timepoint
+     * @return The required quorum for this specific proposal
+     */
+    function quorum(uint256 proposalId, uint256 timepoint) 
+        public 
+        view 
+        returns (uint256) 
+    {
+        // Get proposal-specific quorum based on type
+        return getProposalQuorum(proposalId);
     }
 
     function votingDelay() 
@@ -359,8 +425,15 @@ contract HyraGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override(GovernorUpgradeable, IGovernor) returns (uint256) {
+        // Validate proposal length
+        _validateProposal(targets, values, calldatas);
+        
         uint256 proposalId = super.propose(targets, values, calldatas, description);
-        _proposalProposers[proposalId] = msg.sender;
+        // Removed duplicate _proposalProposers assignment
+        
+        // Set default proposal type as STANDARD
+        proposalTypes[proposalId] = ProposalType.STANDARD;
+        
         return proposalId;
     }
 

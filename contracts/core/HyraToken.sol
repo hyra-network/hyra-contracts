@@ -43,13 +43,15 @@ contract HyraToken is
     // ============ State Variables ============
     mapping(address => bool) public minters;
     mapping(address => uint256) public mintAllowances;
-    address public governanceAddress;
+    // Removed unused governanceAddress - using owner() instead
     uint256 public totalMintedSupply;
     
     // Annual mint tracking
     uint256 public currentMintYear;
     uint256 public mintedThisYear;
     uint256 public mintYearStartTime;
+    mapping(uint256 => uint256) public mintedByYear; // Track minted amount by year
+    uint256 public pendingMintAmount; // Track pending mint requests
     
     // Mint requests (must be approved by DAO)
     struct MintRequest {
@@ -78,6 +80,7 @@ contract HyraToken is
     event MintRequestCancelled(uint256 indexed requestId);
     event TokensMinted(address indexed to, uint256 amount, uint256 newTotalSupply);
     event MintYearReset(uint256 newYear, uint256 timestamp);
+    event InitialDistribution(address indexed holder, uint256 amount, uint256 timestamp);
     event TokensPaused(address indexed by);
     event TokensUnpaused(address indexed by);
 
@@ -111,14 +114,55 @@ contract HyraToken is
     }
 
     /**
-     * @notice Initialize the token contract
+     * @notice Initialize the token contract with secure initial distribution
      * @param _name Token name
      * @param _symbol Token symbol
      * @param _initialSupply Initial token supply
-     * @param _initialHolder Address to receive initial supply
+     * @param _vestingContract Address of the vesting contract for secure distribution
      * @param _governance Initial governance address
      */
     function initialize(
+        string memory _name,
+        string memory _symbol,
+        uint256 _initialSupply,
+        address _vestingContract,
+        address _governance
+    ) public initializer validAddress(_vestingContract) validAddress(_governance) {
+        __ERC20_init(_name, _symbol);
+        __ERC20Burnable_init();
+        __ERC20Permit_init(_name);
+        __ERC20Votes_init();
+        __Ownable_init(_governance); // set initial owner
+        __Pausable_init();
+        
+        // Initial supply should not exceed 5% (2.5B) 
+        require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
+        
+        if (_initialSupply > 0) {
+            // Mint to vesting contract instead of single holder for security
+            _mint(_vestingContract, _initialSupply);
+            totalMintedSupply = _initialSupply;
+            
+            // Emit event for transparency - now shows vesting contract
+            emit InitialDistribution(_vestingContract, _initialSupply, block.timestamp);
+        }
+        
+        // Initialize mint year tracking
+        currentMintYear = 1;
+        mintYearStartTime = block.timestamp;
+        mintedThisYear = 0;
+    }
+    
+    /**
+     * @notice DEPRECATED: Legacy initialize function for backward compatibility
+     * @dev This function is kept for backward compatibility but should not be used
+     * @param _name Token name
+     * @param _symbol Token symbol
+     * @param _initialSupply Initial token supply
+     * @param _initialHolder Address to receive initial supply (DEPRECATED - use vesting)
+     * @param _governance Initial governance address
+     */
+    function initializeLegacy(
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply,
@@ -129,10 +173,8 @@ contract HyraToken is
         __ERC20Burnable_init();
         __ERC20Permit_init(_name);
         __ERC20Votes_init();
-        __Ownable_init(_governance); // set initial owner
+        __Ownable_init(_governance);
         __Pausable_init();
-        
-        governanceAddress = _governance;
         
         // Initial supply should not exceed 5% (2.5B) 
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
@@ -140,6 +182,9 @@ contract HyraToken is
         if (_initialSupply > 0) {
             _mint(_initialHolder, _initialSupply);
             totalMintedSupply = _initialSupply;
+            
+            // Emit event for transparency
+            emit InitialDistribution(_initialHolder, _initialSupply, block.timestamp);
         }
         
         // Initialize mint year tracking
@@ -173,12 +218,15 @@ contract HyraToken is
         
         // Get annual cap for current year
         uint256 annualCap = _getAnnualMintCap(currentMintYear);
-        uint256 remainingMintCapacity = annualCap > mintedThisYear ? 
-            annualCap - mintedThisYear : 0;
+        uint256 remainingMintCapacity = annualCap > (mintedThisYear + pendingMintAmount) ? 
+            annualCap - (mintedThisYear + pendingMintAmount) : 0;
         
         if (_amount > remainingMintCapacity) {
             revert ExceedsAnnualMintCap(_amount, remainingMintCapacity);
         }
+        
+        // Reserve the mint amount
+        pendingMintAmount += _amount;
         
         // Check total supply cap
         if (totalSupply() + _amount > MAX_SUPPLY) {
@@ -215,9 +263,14 @@ contract HyraToken is
         // Mark as executed
         request.executed = true;
         
-        // Update tracking
+        // Update tracking - use the year when request was created, not current year
+        uint256 requestYear = _getYearFromTimestamp(request.approvedAt);
+        mintedByYear[requestYear] += request.amount;
         mintedThisYear += request.amount;
         totalMintedSupply += request.amount;
+        
+        // Release reserved amount
+        pendingMintAmount -= request.amount;
         
         // Mint tokens
         _mint(request.recipient, request.amount);
@@ -341,10 +394,10 @@ contract HyraToken is
         onlyOwner 
         validAddress(_newGovernance) 
     {
-        address oldGovernance = governanceAddress;
-        governanceAddress = _newGovernance;
+        // Removed unused governanceAddress transfer
+        address oldOwner = owner();
         _transferOwnership(_newGovernance);
-        emit GovernanceTransferred(oldGovernance, _newGovernance);
+        emit GovernanceTransferred(oldOwner, _newGovernance);
     }
 
     /**
@@ -468,5 +521,18 @@ contract HyraToken is
         returns (uint256)
     {
         return super.nonces(owner);
+    }
+
+    // ============ Helper Functions ============
+    
+    /**
+     * @notice Get year from timestamp
+     * @param timestamp The timestamp to convert
+     * @return year The year number
+     */
+    function _getYearFromTimestamp(uint256 timestamp) internal pure returns (uint256) {
+        // Simple year calculation based on 365 days per year
+        // This is an approximation - for production, consider using a more precise method
+        return (timestamp / YEAR_DURATION) + 1;
     }
 }
