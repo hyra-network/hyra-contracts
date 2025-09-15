@@ -341,7 +341,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       // Try to execute immediately (should fail)
       await expect(
         token.executeMintRequest(requestId)
-      ).to.be.revertedWith("MintDelayNotMet");
+      ).to.be.revertedWithCustomError(token, "MintDelayNotMet");
       
       // Wait for delay period
       await time.increase(2 * 24 * 60 * 60 + 1); // 2 days + 1 second
@@ -362,7 +362,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
           mintAmount,
           purpose
         )
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWithCustomError(token, "OwnableUnauthorizedAccount");
     });
   });
 
@@ -386,6 +386,25 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     });
 
     it("should allow governance to pause/unpause", async function () {
+      // First, mint some tokens to beneficiary for testing
+      const mintAmount = ethers.parseEther("10000");
+      const purpose = "Test tokens for pause/unpause";
+      
+      // Create and execute mint request
+      await token.connect(owner).createMintRequest(
+        beneficiary.address,
+        mintAmount,
+        purpose
+      );
+      
+      // Wait for delay period
+      await time.increase(2 * 24 * 60 * 60 + 1); // 2 days + 1 second
+      
+      // Execute mint request
+      const requestId = await token.mintRequestCount() - 1n;
+      await token.connect(owner).executeMintRequest(requestId);
+      
+      // Now test pause/unpause
       await expect(
         token.connect(owner).pause()
       ).to.emit(token, "TokensPaused")
@@ -394,7 +413,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       // Try to transfer while paused (should fail)
       await expect(
         token.connect(beneficiary).transfer(other.address, ethers.parseEther("1000"))
-      ).to.be.revertedWith("Pausable: paused");
+      ).to.be.revertedWithCustomError(token, "EnforcedPause");
       
       await expect(
         token.connect(owner).unpause()
@@ -402,9 +421,12 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       .withArgs(owner.address);
       
       // Transfer should work after unpause
-      await expect(
-        token.connect(beneficiary).transfer(other.address, ethers.parseEther("1000"))
-      ).to.not.be.reverted;
+      const tx = await token.connect(beneficiary).transfer(other.address, ethers.parseEther("1000"));
+      await tx.wait();
+      
+      // Verify the transfer actually happened
+      const balance = await token.balanceOf(other.address);
+      expect(balance).to.equal(ethers.parseEther("1000"));
     });
   });
 });

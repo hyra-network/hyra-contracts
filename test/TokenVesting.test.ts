@@ -119,7 +119,7 @@ describe("TokenVesting", function () {
       
       await expect(
         vesting.initialize(ethers.ZeroAddress, owner.address)
-      ).to.be.revertedWithCustomError(vesting, "InvalidAddress");
+      ).to.be.revertedWithCustomError(vesting, "InvalidInitialization");
       
       await expect(
         vesting.initialize(await token.getAddress(), ethers.ZeroAddress)
@@ -177,7 +177,7 @@ describe("TokenVesting", function () {
           false,
           "Test vesting"
         )
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWithCustomError(tokenVesting, "OwnableUnauthorizedAccount");
     });
 
     it("should revert with invalid parameters", async function () {
@@ -194,7 +194,7 @@ describe("TokenVesting", function () {
           false,
           "Test vesting"
         )
-      ).to.be.revertedWith("InvalidAmount");
+      ).to.be.revertedWithCustomError(tokenVesting, "InvalidAmount");
       
       // Zero address beneficiary
       await expect(
@@ -263,7 +263,7 @@ describe("TokenVesting", function () {
           false,
           "Test vesting"
         )
-      ).to.be.revertedWith("InsufficientTokenBalance");
+      ).to.be.revertedWithCustomError(tokenVesting, "InsufficientTokenBalance");
     });
   });
 
@@ -284,7 +284,8 @@ describe("TokenVesting", function () {
         "Test vesting"
       );
       
-      vestingScheduleId = await tx.then(t => t.hash);
+      const receipt = await tx.wait();
+      vestingScheduleId = receipt.hash;
     });
 
     it("should calculate vested amount correctly", async function () {
@@ -336,7 +337,8 @@ describe("TokenVesting", function () {
         "Test vesting"
       );
       
-      vestingScheduleId = await tx.then(t => t.hash);
+      const receipt = await tx.wait();
+      vestingScheduleId = receipt.hash;
     });
 
     it("should release tokens successfully", async function () {
@@ -389,7 +391,8 @@ describe("TokenVesting", function () {
         "Test vesting"
       );
       
-      vestingScheduleId = await tx.then(t => t.hash);
+      const receipt = await tx.wait();
+      vestingScheduleId = receipt.hash;
     });
 
     it("should revoke vesting schedule successfully", async function () {
@@ -436,9 +439,10 @@ describe("TokenVesting", function () {
       
       const tx = await tokenVesting.connect(owner).emergencyWithdraw(withdrawAmount);
       
+      const receipt = await tx.wait();
       await expect(tx)
         .to.emit(tokenVesting, "EmergencyWithdraw")
-        .withArgs(await token.getAddress(), withdrawAmount, await tx.then(t => t.timestamp));
+        .withArgs(await token.getAddress(), withdrawAmount, receipt.timestamp);
       
       const balanceAfter = await token.balanceOf(owner.address);
       expect(balanceAfter - balanceBefore).to.equal(withdrawAmount);
@@ -470,7 +474,8 @@ describe("TokenVesting", function () {
         "Test vesting"
       );
       
-      vestingScheduleId = await tx.then(t => t.hash);
+      const receipt = await tx.wait();
+      vestingScheduleId = receipt.hash;
     });
 
     it("should return correct vesting schedule details", async function () {

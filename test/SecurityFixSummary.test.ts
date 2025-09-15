@@ -363,7 +363,7 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
       console.log("   - Emergency withdraw capability");
       console.log("   - Revocable vesting schedules");
       console.log("");
-      console.log("🎯 RESULT: HNA-01 CENTRALIZATION RISK RESOLVED");
+      console.log("RESULT: HNA-01 CENTRALIZATION RISK RESOLVED");
       console.log("=====================================\n");
       
       // Verify the fix is working

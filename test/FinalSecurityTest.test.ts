@@ -253,14 +253,14 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       console.log("   • Maintained backward compatibility");
       console.log("   • Added comprehensive testing");
       console.log("");
-      console.log("📊 TECHNICAL IMPLEMENTATION:");
+      console.log("TECHNICAL IMPLEMENTATION:");
       console.log("   • New TokenVesting contract");
       console.log("   • Updated HyraToken initialization");
       console.log("   • Enhanced DAO Initializer");
       console.log("   • Multi-sig wallet integration");
       console.log("   • Comprehensive test coverage");
       console.log("");
-      console.log("🎯 RESULT: HNA-01 CENTRALIZATION RISK RESOLVED");
+      console.log("RESULT: HNA-01 CENTRALIZATION RISK RESOLVED");
       console.log("=".repeat(60));
       console.log("");
       

@@ -5,7 +5,7 @@ Built with **Hardhat** and **OpenZeppelin** upgradeable libraries, it empowers c
 
 ---
 
-## **✨ Highlights**
+## **Highlights**
 - **DAO-First Design** – Every critical action (minting, pausing, upgrading) is gated by on-chain governance.  
 - **Upgradeable Architecture** – Safe, scheduled upgrades via `HyraGovernor` + `HyraTimelock` + `HyraProxyAdmin`.  
 - **Time-Locked Security** – Sensitive actions delayed to give the community time to react.  
@@ -13,7 +13,7 @@ Built with **Hardhat** and **OpenZeppelin** upgradeable libraries, it empowers c
 
 ---
 
-## **💎 Hyra Token**
+## **Hyra Token**
 The heart of the ecosystem — **HyraToken** — is a governance-ready, upgradeable ERC20 with built-in safeguards:
 
 - **2.5B HYRA** initial supply at launch.  

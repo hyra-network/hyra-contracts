@@ -8,33 +8,33 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title TokenVesting
- * @notice Hợp đồng phân phối token dần theo thời gian với bảo mật cao
- * @dev Giải quyết vấn đề tập trung hóa trong phân phối token ban đầu
+ * @notice Gradual token distribution contract with high security
+ * @dev Solves centralization issues in initial token distribution
  */
 contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     
     // ============ Structs ============
     struct VestingSchedule {
-        bool initialized;        // Đã khởi tạo chưa
-        bool revocable;         // Có thể hủy không
-        uint256 totalAmount;    // Tổng số token được vest
-        uint256 releasedAmount; // Số token đã phát hành
-        uint256 startTime;      // Thời gian bắt đầu vesting
-        uint256 duration;       // Thời gian vesting (seconds)
-        uint256 cliff;          // Thời gian cliff (seconds)
-        address beneficiary;    // Người nhận token
-        string purpose;         // Mục đích sử dụng token
+        bool initialized;        // Whether initialized
+        bool revocable;         // Whether revocable
+        uint256 totalAmount;    // Total tokens to be vested
+        uint256 releasedAmount; // Amount of tokens already released
+        uint256 startTime;      // Vesting start time
+        uint256 duration;       // Vesting duration (seconds)
+        uint256 cliff;          // Cliff duration (seconds)
+        address beneficiary;    // Token recipient
+        string purpose;         // Purpose of token usage
     }
     
     // ============ State Variables ============
-    IERC20 public token;                              // Token được vest
-    mapping(bytes32 => VestingSchedule) public vestingSchedules; // Lịch trình vesting
-    mapping(address => uint256) public totalVestedAmount;        // Tổng token vested cho mỗi người
-    mapping(address => uint256) public totalReleasedAmount;      // Tổng token đã phát hành cho mỗi người
+    IERC20 public token;                              // Token being vested
+    mapping(bytes32 => VestingSchedule) public vestingSchedules; // Vesting schedules
+    mapping(address => uint256) public totalVestedAmount;        // Total vested tokens per person
+    mapping(address => uint256) public totalReleasedAmount;      // Total released tokens per person
     
-    uint256 public totalVestingSchedules;             // Tổng số lịch trình vesting
-    uint256 public constant MIN_VESTING_DURATION = 30 days;     // Thời gian vesting tối thiểu
-    uint256 public constant MAX_VESTING_DURATION = 10 * 365 days; // Thời gian vesting tối đa (10 năm)
+    uint256 public totalVestingSchedules;             // Total number of vesting schedules
+    uint256 public constant MIN_VESTING_DURATION = 30 days;     // Minimum vesting duration
+    uint256 public constant MAX_VESTING_DURATION = 10 * 365 days; // Maximum vesting duration (10 years)
     
     // ============ Events ============
     event VestingScheduleCreated(
@@ -112,9 +112,9 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Khởi tạo hợp đồng vesting
-     * @param _token Địa chỉ token ERC20
-     * @param _owner Chủ sở hữu hợp đồng (thường là multi-sig)
+     * @notice Initialize vesting contract
+     * @param _token ERC20 token address
+     * @param _owner Contract owner (usually multi-sig)
      */
     function initialize(address _token, address _owner) 
         public 
@@ -129,15 +129,15 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Tạo lịch trình vesting mới
-     * @param _beneficiary Người nhận token
-     * @param _totalAmount Tổng số token
-     * @param _startTime Thời gian bắt đầu
-     * @param _duration Thời gian vesting
-     * @param _cliff Thời gian cliff
-     * @param _revocable Có thể hủy không
-     * @param _purpose Mục đích sử dụng
-     * @return vestingScheduleId ID của lịch trình vesting
+     * @notice Create new vesting schedule
+     * @param _beneficiary Token recipient
+     * @param _totalAmount Total token amount
+     * @param _startTime Start time
+     * @param _duration Vesting duration
+     * @param _cliff Cliff duration
+     * @param _revocable Whether revocable
+     * @param _purpose Purpose of usage
+     * @return vestingScheduleId Vesting schedule ID
      */
     function createVestingSchedule(
         address _beneficiary,
@@ -156,12 +156,12 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
         validCliff(_cliff, _duration)
         returns (bytes32 vestingScheduleId)
     {
-        // Kiểm tra token balance của contract
+        // Check contract token balance
         if (token.balanceOf(address(this)) < _totalAmount) {
             revert InsufficientTokenBalance();
         }
         
-        // Tạo ID duy nhất cho vesting schedule
+        // Create unique ID for vesting schedule
         vestingScheduleId = keccak256(abi.encodePacked(
             _beneficiary,
             _totalAmount,
@@ -172,12 +172,12 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
             block.timestamp
         ));
         
-        // Kiểm tra vesting schedule đã tồn tại chưa
+        // Check if vesting schedule already exists
         if (vestingSchedules[vestingScheduleId].initialized) {
             revert VestingScheduleAlreadyExists();
         }
         
-        // Tạo vesting schedule
+        // Create vesting schedule
         vestingSchedules[vestingScheduleId] = VestingSchedule({
             initialized: true,
             revocable: _revocable,
@@ -190,7 +190,7 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
             purpose: _purpose
         });
         
-        // Cập nhật thống kê
+        // Update statistics
         totalVestingSchedules++;
         totalVestedAmount[_beneficiary] += _totalAmount;
         
@@ -208,9 +208,9 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Phát hành token đã vested
-     * @param _vestingScheduleId ID của lịch trình vesting
-     * @return releasedAmount Số token đã phát hành
+     * @notice Release vested tokens
+     * @param _vestingScheduleId Vesting schedule ID
+     * @return releasedAmount Amount of tokens released
      */
     function release(bytes32 _vestingScheduleId) 
         external 
@@ -220,18 +220,18 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     {
         VestingSchedule storage schedule = vestingSchedules[_vestingScheduleId];
         
-        // Tính toán số token có thể phát hành
+        // Calculate releasable token amount
         releasedAmount = _calculateReleasableAmount(schedule);
         
         if (releasedAmount == 0) {
             revert NoTokensToRelease();
         }
         
-        // Cập nhật trạng thái
+        // Update state
         schedule.releasedAmount += releasedAmount;
         totalReleasedAmount[schedule.beneficiary] += releasedAmount;
         
-        // Chuyển token
+        // Transfer tokens
         require(
             token.transfer(schedule.beneficiary, releasedAmount),
             "Token transfer failed"
@@ -248,9 +248,9 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Phát hành token cho tất cả lịch trình của một người
-     * @param _beneficiary Người nhận token
-     * @return totalReleased Tổng số token đã phát hành
+     * @notice Release tokens for all schedules of a beneficiary
+     * @param _beneficiary Token recipient
+     * @return totalReleased Total amount of tokens released
      */
     function releaseAllForBeneficiary(address _beneficiary) 
         external 
@@ -260,19 +260,19 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     {
         totalReleased = 0;
         
-        // Lưu ý: Trong thực tế, cần implement cách để tìm tất cả vesting schedules của một beneficiary
-        // Đây là implementation đơn giản, có thể cần cải thiện
+        // Note: In practice, need to implement way to find all vesting schedules of a beneficiary
+        // This is a simple implementation, may need improvement
         for (uint256 i = 0; i < totalVestingSchedules; i++) {
-            // Implementation chi tiết cần thêm mapping để track vesting schedules per beneficiary
+            // Detailed implementation needs additional mapping to track vesting schedules per beneficiary
         }
         
         return totalReleased;
     }
     
     /**
-     * @notice Hủy lịch trình vesting (chỉ khi revocable = true)
-     * @param _vestingScheduleId ID của lịch trình vesting
-     * @return revokedAmount Số token đã hủy
+     * @notice Revoke vesting schedule (only when revocable = true)
+     * @param _vestingScheduleId Vesting schedule ID
+     * @return revokedAmount Amount of tokens revoked
      */
     function revoke(bytes32 _vestingScheduleId) 
         external 
@@ -286,7 +286,7 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
             revert NotRevocable();
         }
         
-        // Tính toán số token còn lại chưa vest
+        // Calculate remaining unvested tokens
         uint256 vestedAmount = _calculateVestedAmount(schedule);
         revokedAmount = schedule.totalAmount - vestedAmount;
         
@@ -294,7 +294,7 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
             revert AlreadyRevoked();
         }
         
-        // Cập nhật trạng thái
+        // Update state
         schedule.totalAmount = vestedAmount;
         totalVestedAmount[schedule.beneficiary] -= revokedAmount;
         
@@ -309,8 +309,8 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Rút token khẩn cấp (chỉ owner)
-     * @param _amount Số token cần rút
+     * @notice Emergency token withdrawal (owner only)
+     * @param _amount Amount of tokens to withdraw
      */
     function emergencyWithdraw(uint256 _amount) 
         external 
@@ -324,9 +324,9 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     // ============ View Functions ============
     
     /**
-     * @notice Tính toán số token có thể phát hành
-     * @param _vestingScheduleId ID của lịch trình vesting
-     * @return Số token có thể phát hành
+     * @notice Calculate releasable token amount
+     * @param _vestingScheduleId Vesting schedule ID
+     * @return Releasable token amount
      */
     function getReleasableAmount(bytes32 _vestingScheduleId) 
         external 
@@ -338,9 +338,9 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Tính toán số token đã vested
-     * @param _vestingScheduleId ID của lịch trình vesting
-     * @return Số token đã vested
+     * @notice Calculate vested token amount
+     * @param _vestingScheduleId Vesting schedule ID
+     * @return Vested token amount
      */
     function getVestedAmount(bytes32 _vestingScheduleId) 
         external 
@@ -352,9 +352,9 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Lấy thông tin chi tiết của vesting schedule
-     * @param _vestingScheduleId ID của lịch trình vesting
-     * @return schedule Thông tin chi tiết
+     * @notice Get detailed vesting schedule information
+     * @param _vestingScheduleId Vesting schedule ID
+     * @return schedule Detailed information
      */
     function getVestingSchedule(bytes32 _vestingScheduleId) 
         external 
@@ -366,25 +366,25 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Tính tổng token có thể phát hành cho một người
-     * @param _beneficiary Người nhận token
-     * @return Tổng số token có thể phát hành
+     * @notice Calculate total releasable tokens for a beneficiary
+     * @param _beneficiary Token recipient
+     * @return Total releasable token amount
      */
     function getTotalReleasableAmount(address _beneficiary) 
         external 
         view 
         returns (uint256)
     {
-        // Implementation cần thêm mapping để track vesting schedules per beneficiary
+        // Implementation needs additional mapping to track vesting schedules per beneficiary
         return 0;
     }
     
     // ============ Internal Functions ============
     
     /**
-     * @notice Tính toán số token có thể phát hành
-     * @param schedule Lịch trình vesting
-     * @return Số token có thể phát hành
+     * @notice Calculate releasable token amount
+     * @param schedule Vesting schedule
+     * @return Releasable token amount
      */
     function _calculateReleasableAmount(VestingSchedule storage schedule) 
         internal 
@@ -396,31 +396,31 @@ contract TokenVesting is Initializable, OwnableUpgradeable, ReentrancyGuardUpgra
     }
     
     /**
-     * @notice Tính toán số token đã vested
-     * @param schedule Lịch trình vesting
-     * @return Số token đã vested
+     * @notice Calculate vested token amount
+     * @param schedule Vesting schedule
+     * @return Vested token amount
      */
     function _calculateVestedAmount(VestingSchedule storage schedule) 
         internal 
         view 
         returns (uint256)
     {
-        // Kiểm tra thời gian bắt đầu
+        // Check start time
         if (block.timestamp < schedule.startTime) {
             return 0;
         }
         
-        // Kiểm tra thời gian cliff
+        // Check cliff time
         if (block.timestamp < schedule.startTime + schedule.cliff) {
             return 0;
         }
         
-        // Kiểm tra thời gian kết thúc
+        // Check end time
         if (block.timestamp >= schedule.startTime + schedule.duration) {
             return schedule.totalAmount;
         }
         
-        // Tính toán linear vesting
+        // Calculate linear vesting
         uint256 timeElapsed = block.timestamp - schedule.startTime;
         return (schedule.totalAmount * timeElapsed) / schedule.duration;
     }

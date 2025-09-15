@@ -2,25 +2,25 @@ import { ethers } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 
 /**
- * Script để thiết lập ví đa chữ ký và phân phối token an toàn
- * Giải quyết vấn đề HNA-01: Centralization Risk trong phân phối token ban đầu
+ * Script to setup multi-signature wallet and secure token distribution
+ * Solves HNA-01: Centralization Risk in initial token distribution
  */
 
 interface MultisigConfig {
-  signers: string[];           // Danh sách người ký
-  threshold: number;          // Số chữ ký tối thiểu cần thiết
-  name: string;              // Tên ví đa chữ ký
-  description: string;       // Mô tả mục đích
+  signers: string[];           // List of signers
+  threshold: number;          // Minimum signatures required
+  name: string;              // Multi-sig wallet name
+  description: string;       // Purpose description
 }
 
 interface VestingSchedule {
-  beneficiary: string;       // Người nhận token
-  amount: string;           // Số lượng token (wei)
-  startTime: number;        // Thời gian bắt đầu (timestamp)
-  duration: number;         // Thời gian vesting (seconds)
-  cliff: number;           // Thời gian cliff (seconds)
-  revocable: boolean;      // Có thể hủy không
-  purpose: string;         // Mục đích sử dụng
+  beneficiary: string;       // Token recipient
+  amount: string;           // Token amount (wei)
+  startTime: number;        // Start time (timestamp)
+  duration: number;         // Vesting duration (seconds)
+  cliff: number;           // Cliff duration (seconds)
+  revocable: boolean;      // Whether revocable
+  purpose: string;         // Purpose of usage
 }
 
 export class SecureTokenDistributionSetup {
@@ -31,24 +31,24 @@ export class SecureTokenDistributionSetup {
   }
 
   /**
-   * Thiết lập ví đa chữ ký với Gnosis Safe
-   * @param config Cấu hình ví đa chữ ký
-   * @returns Địa chỉ ví đa chữ ký
+   * Setup multi-signature wallet with Gnosis Safe
+   * @param config Multi-signature wallet configuration
+   * @returns Multi-signature wallet address
    */
   async setupMultisigWallet(config: MultisigConfig): Promise<string> {
-    console.log("🔐 Thiết lập ví đa chữ ký...");
+    console.log("Setting up multi-signature wallet...");
     
-    // Validate cấu hình
+    // Validate configuration
     if (config.signers.length < config.threshold) {
-      throw new Error("Số lượng người ký phải >= threshold");
+      throw new Error("Number of signers must be >= threshold");
     }
-    
+
     if (config.threshold < 2) {
-      throw new Error("Threshold phải >= 2 cho bảo mật");
+      throw new Error("Threshold must be >= 2 for security");
     }
     
-    // Trong thực tế, sử dụng Gnosis Safe SDK
-    // Đây là mock implementation cho demo
+    // In practice, use Gnosis Safe SDK
+    // This is a mock implementation for demo
     const mockMultisigAddress = await this.deployMockMultisig(config);
     
     console.log(`Ví đa chữ ký đã được tạo: ${mockMultisigAddress}`);
@@ -64,7 +64,7 @@ export class SecureTokenDistributionSetup {
    * @returns Cấu hình vesting
    */
   createVestingSchedules(schedules: VestingSchedule[]): any {
-    console.log("⏰ Tạo lịch trình vesting...");
+    console.log("Creating vesting schedules...");
     
     const vestingConfig = {
       beneficiaries: schedules.map(s => s.beneficiary),
@@ -158,9 +158,9 @@ export class SecureTokenDistributionSetup {
    */
   generateDistributionReport(deploymentResult: any): string {
     const report = `
-# 📊 Báo Cáo Phân Phối Token An Toàn
+# Token Distribution Security Report
 
-## 🎯 Địa Chỉ Hợp Đồng
+## Contract Addresses
 - **Token Proxy**: ${deploymentResult.tokenProxy}
 - **Timelock Proxy**: ${deploymentResult.timelockProxy}
 - **Governor Proxy**: ${deploymentResult.governorProxy}
@@ -179,7 +179,7 @@ export class SecureTokenDistributionSetup {
 3. **Bảo vệ khỏi tấn công**: Cần nhiều chữ ký để thực hiện giao dịch quan trọng
 4. **Phân phối công bằng**: Token được phân phối dần theo thời gian
 
-## 🚨 Giải Quyết HNA-01
+## HNA-01 Resolution
 Vấn đề tập trung hóa trong phân phối token ban đầu đã được giải quyết bằng:
 - Ví đa chữ ký thay vì địa chỉ đơn lẻ
 - Hợp đồng vesting để phân phối dần
@@ -282,7 +282,7 @@ export async function main() {
     const report = setup.generateDistributionReport(deploymentResult);
     console.log(report);
     
-    console.log("\n🎉 Thiết lập hoàn tất! Vấn đề HNA-01 đã được giải quyết.");
+    console.log("\nSetup completed! HNA-01 issue has been resolved.");
     
   } catch (error) {
     console.error("Lỗi trong quá trình thiết lập:", error);
