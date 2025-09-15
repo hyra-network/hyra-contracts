@@ -13,6 +13,7 @@ import "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import "../interfaces/IHyraGovernor.sol";
+import "../security/DAORoleManager.sol";
 
 /**
  * @title HyraGovernor
@@ -39,6 +40,9 @@ contract HyraGovernor is
     mapping(address => bool) public securityCouncilMembers;
     mapping(uint256 => address) private _proposalProposers; // Track proposers for v5
     uint256 public securityCouncilMemberCount;
+    
+    // DAO Role Manager for decentralized role management
+    DAORoleManager public roleManager;
     
     // Quorum percentages (basis points)
     uint256 public constant STANDARD_QUORUM = 1000; // 10%
@@ -193,18 +197,38 @@ contract HyraGovernor is
         }
     }
 
+    // ============ DAO Role Management Functions ============
+    
+    /**
+     * @notice Set the DAO Role Manager (only governance)
+     * @param _roleManager Address of the DAO Role Manager
+     */
+    function setRoleManager(DAORoleManager _roleManager) external onlyGovernance {
+        roleManager = _roleManager;
+    }
+
     // ============ Security Council Functions ============
 
     /**
-     * @notice Add a security council member
+     * @notice Add a security council member (decentralized via DAO role manager)
      * @param _member Address to add
      */
     function addSecurityCouncilMember(address _member) 
         external 
-        onlyGovernance 
     {
         if (_member == address(0)) revert ZeroAddress();
         if (securityCouncilMembers[_member]) revert AlreadySecurityCouncilMember();
+        
+        // Check if caller has governance role through DAO role manager
+        if (address(roleManager) != address(0)) {
+            require(
+                roleManager.hasRole(roleManager.GOVERNANCE_ROLE(), msg.sender),
+                "Only governance role holders can add security council members"
+            );
+        } else {
+            // Fallback: only allow if no role manager is set (deployment phase)
+            revert("DAO role manager must be set for security council management");
+        }
         
         securityCouncilMembers[_member] = true;
         securityCouncilMemberCount++;
@@ -213,14 +237,24 @@ contract HyraGovernor is
     }
 
     /**
-     * @notice Remove a security council member
+     * @notice Remove a security council member (decentralized via DAO role manager)
      * @param _member Address to remove
      */
     function removeSecurityCouncilMember(address _member) 
         external 
-        onlyGovernance 
     {
         if (!securityCouncilMembers[_member]) revert NotSecurityCouncilMember();
+        
+        // Check if caller has governance role through DAO role manager
+        if (address(roleManager) != address(0)) {
+            require(
+                roleManager.hasRole(roleManager.GOVERNANCE_ROLE(), msg.sender),
+                "Only governance role holders can remove security council members"
+            );
+        } else {
+            // Fallback: only allow if no role manager is set (deployment phase)
+            revert("DAO role manager must be set for security council management");
+        }
         
         securityCouncilMembers[_member] = false;
         securityCouncilMemberCount--;

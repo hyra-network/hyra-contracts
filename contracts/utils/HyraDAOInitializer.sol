@@ -8,6 +8,8 @@ import "../proxy/SecureProxyAdmin.sol";
 import "../proxy/HyraProxyDeployer.sol";
 import "../utils/TokenVesting.sol";
 import "../interfaces/ITokenVesting.sol";
+import "../security/SecureExecutorManager.sol";
+import "../security/ProxyAdminValidator.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "../proxy/HyraTransparentUpgradeableProxy.sol";
 
@@ -64,6 +66,8 @@ contract HyraDAOInitializer {
         // Infrastructure
         address proxyAdmin;
         address proxyDeployer;
+        address executorManager;
+        address proxyAdminValidator;
     }
     
     // ============ Events ============
@@ -99,6 +103,17 @@ contract HyraDAOInitializer {
         
         // 2. Deploy ProxyDeployer
         result.proxyDeployer = address(new HyraProxyDeployer());
+        
+        // 2.1 Deploy SecureExecutorManager
+        address[] memory initialExecutors = new address[](1);
+        initialExecutors[0] = address(this); // Temporary executor
+        
+        result.executorManager = address(new SecureExecutorManager());
+        SecureExecutorManager(result.executorManager).initialize(address(this), initialExecutors);
+        
+        // 2.2 Deploy ProxyAdminValidator
+        result.proxyAdminValidator = address(new ProxyAdminValidator());
+        ProxyAdminValidator(result.proxyAdminValidator).initialize(address(this));
         
         // 3. Deploy Timelock implementation
         result.timelockImplementation = address(new HyraTimelock());
@@ -182,8 +197,20 @@ contract HyraDAOInitializer {
             "GOVERNOR"
         );
         
-        // 12. Configure roles
+        // 12. Configure roles and setup executor manager
         _configureRoles(result, config);
+        
+        // 12.1 Setup executor manager and proxy admin validator in timelock
+        HyraTimelock(payable(result.timelockProxy)).setExecutorManager(SecureExecutorManager(result.executorManager));
+        HyraTimelock(payable(result.timelockProxy)).setProxyAdminValidator(ProxyAdminValidator(result.proxyAdminValidator));
+        
+        // 12.2 Authorize the deployed proxy admin in the validator
+        ProxyAdminValidator(result.proxyAdminValidator).authorizeProxyAdmin(
+            result.proxyAdmin,
+            "HyraDAO SecureProxyAdmin",
+            result.timelockProxy, // Owner is the timelock
+            "Main proxy admin for Hyra DAO system"
+        );
         
         // 13. Setup vesting schedules
         _setupVestingSchedules(result, config);
@@ -220,9 +247,9 @@ contract HyraDAOInitializer {
         // Grant proposer role to Governor
         timelock.grantRole(PROPOSER_ROLE, result.governorProxy);
         
-        // Grant executor role to address(0) - anyone can execute
-        // Note: This allows anyone to execute proposals after deployment
-        timelock.grantRole(EXECUTOR_ROLE, address(0));
+        // Grant executor role to SecureExecutorManager
+        // This replaces the problematic address(0) executor
+        timelock.grantRole(EXECUTOR_ROLE, result.executorManager);
         
         // Setup security council
         for (uint256 i = 0; i < config.securityCouncil.length; i++) {
@@ -294,7 +321,9 @@ contract HyraDAOInitializer {
                  result.timelockProxy != address(0) &&
                  result.vestingProxy != address(0) &&
                  result.proxyAdmin != address(0) &&
-                 result.proxyDeployer != address(0);
+                 result.proxyDeployer != address(0) &&
+                 result.executorManager != address(0) &&
+                 result.proxyAdminValidator != address(0);
         
         if (!success) return false;
         

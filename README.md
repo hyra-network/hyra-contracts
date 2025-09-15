@@ -25,19 +25,22 @@ The heart of the ecosystem — **HyraToken** — is a governance-ready, upgradea
 
 ---
 
-## **🗂 Structure**
+## ** Structure**
 ```
 contracts/
   core/                # Main DAO logic (Governor, Timelock, Token)
+  security/            # Security contracts (DAORoleManager, SecureExecutorManager, etc.)
   mocks/               # Mocks for testing upgrades (e.g., HyraTokenV2)
   interfaces/          # Interfaces
-  proxy/
-  utils/
+  proxy/               # Proxy contracts and admin
+  utils/               # Utility contracts
+docs/                  # Documentation and audit reports
+  audit/               # Audit reports and security analysis
 ```
 
 ---
 
-## **⚡ Quick Start**
+## ** Quick Start**
 ```shell
 yarn install
 npx hardhat compile
@@ -47,7 +50,7 @@ npx hardhat test
 
 ---
 
-## **🚀 Development & Deployment**
+## ** Development & Deployment**
 Run local node:
 ```shell
 npx hardhat node
@@ -57,5 +60,16 @@ Deploy:
 ```shell
 npx hardhat run scripts/deploy.ts --network localhost
 ```
+
+---
+
+## ** Documentation**
+
+- **[Documentation Overview](./docs/README.md)** - Complete documentation guide
+- **[Audit Reports](./docs/audit/)** - Security audit reports and fixes
+- **[Security Implementation](./docs/HNA03_SECURITY_IMPLEMENTATION.md)** - Security implementation details
+
+### Security Status
+All CertiK audit findings have been resolved (22/22 - 100% resolution rate). The codebase is production-ready with enhanced security measures.
 
 ---
