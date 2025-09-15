@@ -114,14 +114,55 @@ contract HyraToken is
     }
 
     /**
-     * @notice Initialize the token contract
+     * @notice Initialize the token contract with secure initial distribution
      * @param _name Token name
      * @param _symbol Token symbol
      * @param _initialSupply Initial token supply
-     * @param _initialHolder Address to receive initial supply
+     * @param _vestingContract Address of the vesting contract for secure distribution
      * @param _governance Initial governance address
      */
     function initialize(
+        string memory _name,
+        string memory _symbol,
+        uint256 _initialSupply,
+        address _vestingContract,
+        address _governance
+    ) public initializer validAddress(_vestingContract) validAddress(_governance) {
+        __ERC20_init(_name, _symbol);
+        __ERC20Burnable_init();
+        __ERC20Permit_init(_name);
+        __ERC20Votes_init();
+        __Ownable_init(_governance); // set initial owner
+        __Pausable_init();
+        
+        // Initial supply should not exceed 5% (2.5B) 
+        require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
+        
+        if (_initialSupply > 0) {
+            // Mint to vesting contract instead of single holder for security
+            _mint(_vestingContract, _initialSupply);
+            totalMintedSupply = _initialSupply;
+            
+            // Emit event for transparency - now shows vesting contract
+            emit InitialDistribution(_vestingContract, _initialSupply, block.timestamp);
+        }
+        
+        // Initialize mint year tracking
+        currentMintYear = 1;
+        mintYearStartTime = block.timestamp;
+        mintedThisYear = 0;
+    }
+    
+    /**
+     * @notice DEPRECATED: Legacy initialize function for backward compatibility
+     * @dev This function is kept for backward compatibility but should not be used
+     * @param _name Token name
+     * @param _symbol Token symbol
+     * @param _initialSupply Initial token supply
+     * @param _initialHolder Address to receive initial supply (DEPRECATED - use vesting)
+     * @param _governance Initial governance address
+     */
+    function initializeLegacy(
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply,
@@ -132,10 +173,8 @@ contract HyraToken is
         __ERC20Burnable_init();
         __ERC20Permit_init(_name);
         __ERC20Votes_init();
-        __Ownable_init(_governance); // set initial owner
+        __Ownable_init(_governance);
         __Pausable_init();
-        
-        // Removed unused governanceAddress assignment
         
         // Initial supply should not exceed 5% (2.5B) 
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");

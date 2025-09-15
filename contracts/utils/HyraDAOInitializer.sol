@@ -6,6 +6,8 @@ import "../core/HyraGovernor.sol";
 import "../core/HyraTimelock.sol";
 import "../proxy/HyraProxyAdmin.sol";
 import "../proxy/HyraProxyDeployer.sol";
+import "../utils/TokenVesting.sol";
+import "../interfaces/ITokenVesting.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "../proxy/HyraTransparentUpgradeableProxy.sol";
 
@@ -21,7 +23,7 @@ contract HyraDAOInitializer {
         string tokenName;
         string tokenSymbol;
         uint256 initialSupply;
-        address initialHolder;
+        address vestingContract; // Thay thế initialHolder bằng vesting contract
         // Timelock config
         uint256 timelockDelay;
         // Governor config
@@ -31,6 +33,18 @@ contract HyraDAOInitializer {
         uint256 quorumPercentage;
         // Security council
         address[] securityCouncil;
+        // Vesting config
+        VestingConfig vestingConfig;
+    }
+    
+    struct VestingConfig {
+        address[] beneficiaries;      // Danh sách người nhận token
+        uint256[] amounts;           // Số lượng token cho mỗi người
+        uint256[] startTimes;        // Thời gian bắt đầu vesting
+        uint256[] durations;         // Thời gian vesting
+        uint256[] cliffs;            // Thời gian cliff
+        bool[] revocable;            // Có thể hủy không
+        string[] purposes;           // Mục đích sử dụng
     }
     
     struct DeploymentResult {
@@ -38,10 +52,12 @@ contract HyraDAOInitializer {
         address tokenImplementation;
         address governorImplementation;
         address timelockImplementation;
+        address vestingImplementation;
         // Proxies
         address tokenProxy;
         address governorProxy;
         address timelockProxy;
+        address vestingProxy;
         // Infrastructure
         address proxyAdmin;
         address proxyDeployer;
@@ -71,7 +87,7 @@ contract HyraDAOInitializer {
         // Validate config
         if (bytes(config.tokenName).length == 0 || 
             bytes(config.tokenSymbol).length == 0 ||
-            config.initialHolder == address(0)) {
+            config.vestingContract == address(0)) {
             revert InvalidConfig();
         }
         
@@ -106,16 +122,29 @@ contract HyraDAOInitializer {
             "TIMELOCK"
         );
         
-        // 5. Deploy Token implementation
+        // 5. Deploy Vesting implementation
+        result.vestingImplementation = address(new TokenVesting());
+        
+        // 6. Deploy Vesting proxy (will be initialized after token deployment)
+        bytes memory vestingInitData = "";
+        
+        result.vestingProxy = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
+            result.vestingImplementation,
+            result.proxyAdmin,
+            vestingInitData,
+            "VESTING"
+        );
+        
+        // 7. Deploy Token implementation
         result.tokenImplementation = address(new HyraToken());
         
-        // 6. Deploy Token proxy
+        // 8. Deploy Token proxy with vesting contract address
         bytes memory tokenInitData = abi.encodeWithSelector(
             HyraToken.initialize.selector,
             config.tokenName,
             config.tokenSymbol,
             config.initialSupply,
-            config.initialHolder,
+            result.vestingProxy, // Vesting contract receives initial tokens
             result.timelockProxy // Timelock is the owner
         );
         
@@ -126,10 +155,13 @@ contract HyraDAOInitializer {
             "TOKEN"
         );
         
-        // 7. Deploy Governor implementation
+        // 9. Initialize Vesting contract with token address
+        ITokenVesting(result.vestingProxy).initialize(result.tokenProxy, result.timelockProxy);
+        
+        // 10. Deploy Governor implementation
         result.governorImplementation = address(new HyraGovernor());
         
-        // 8. Deploy Governor proxy
+        // 11. Deploy Governor proxy
         bytes memory governorInitData = abi.encodeWithSelector(
             HyraGovernor.initialize.selector,
             IVotes(result.tokenProxy),
@@ -147,15 +179,19 @@ contract HyraDAOInitializer {
             "GOVERNOR"
         );
         
-        // 9. Configure roles
+        // 12. Configure roles
         _configureRoles(result, config);
         
-        // 10. Add proxies to ProxyAdmin
+        // 13. Setup vesting schedules
+        _setupVestingSchedules(result, config);
+        
+        // 14. Add proxies to ProxyAdmin
         HyraProxyAdmin(result.proxyAdmin).addProxy(result.tokenProxy, "HyraToken");
         HyraProxyAdmin(result.proxyAdmin).addProxy(result.governorProxy, "HyraGovernor");
         HyraProxyAdmin(result.proxyAdmin).addProxy(result.timelockProxy, "HyraTimelock");
+        HyraProxyAdmin(result.proxyAdmin).addProxy(result.vestingProxy, "TokenVesting");
         
-        // 11. Transfer ProxyAdmin ownership to Timelock
+        // 15. Transfer ProxyAdmin ownership to Timelock
         HyraProxyAdmin(result.proxyAdmin).transferOwnership(result.timelockProxy);
         
         emit DAODeployed(msg.sender, result, block.timestamp);
@@ -199,6 +235,43 @@ contract HyraDAOInitializer {
     }
     
     /**
+     * @notice Thiết lập các lịch trình vesting
+     */
+    function _setupVestingSchedules(
+        DeploymentResult memory result,
+        DAOConfig memory config
+    ) private {
+        VestingConfig memory vestingConfig = config.vestingConfig;
+        
+        // Kiểm tra cấu hình vesting
+        require(
+            vestingConfig.beneficiaries.length > 0 &&
+            vestingConfig.beneficiaries.length == vestingConfig.amounts.length &&
+            vestingConfig.beneficiaries.length == vestingConfig.startTimes.length &&
+            vestingConfig.beneficiaries.length == vestingConfig.durations.length &&
+            vestingConfig.beneficiaries.length == vestingConfig.cliffs.length &&
+            vestingConfig.beneficiaries.length == vestingConfig.revocable.length &&
+            vestingConfig.beneficiaries.length == vestingConfig.purposes.length,
+            "Invalid vesting config"
+        );
+        
+        ITokenVesting vesting = ITokenVesting(result.vestingProxy);
+        
+        // Tạo vesting schedule cho từng beneficiary
+        for (uint256 i = 0; i < vestingConfig.beneficiaries.length; i++) {
+            vesting.createVestingSchedule(
+                vestingConfig.beneficiaries[i],
+                vestingConfig.amounts[i],
+                vestingConfig.startTimes[i],
+                vestingConfig.durations[i],
+                vestingConfig.cliffs[i],
+                vestingConfig.revocable[i],
+                vestingConfig.purposes[i]
+            );
+        }
+    }
+    
+    /**
      * @notice Verify deployment was successful
      * @param result Deployment result to verify
      * @return success True if all contracts deployed correctly
@@ -212,9 +285,11 @@ contract HyraDAOInitializer {
         success = result.tokenImplementation != address(0) &&
                  result.governorImplementation != address(0) &&
                  result.timelockImplementation != address(0) &&
+                 result.vestingImplementation != address(0) &&
                  result.tokenProxy != address(0) &&
                  result.governorProxy != address(0) &&
                  result.timelockProxy != address(0) &&
+                 result.vestingProxy != address(0) &&
                  result.proxyAdmin != address(0) &&
                  result.proxyDeployer != address(0);
         

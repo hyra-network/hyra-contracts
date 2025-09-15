@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "hardhat test",
     "compile": "hardhat compile",
-    "test:token": "hardhat test test/token.hyra.ts"
+    "test:token": "hardhat test test/token.hyra.ts",
+    "test:security": "hardhat test test/*Security*.test.ts",
+    "test:vesting": "hardhat test test/TokenVesting.test.ts",
+    "test:all": "hardhat test test/"
   },
   "keywords": [],
   "author": "",
