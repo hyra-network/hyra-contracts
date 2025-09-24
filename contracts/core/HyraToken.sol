@@ -143,6 +143,9 @@ contract HyraToken is
             _mint(_vestingContract, _initialSupply);
             totalMintedSupply = _initialSupply;
             
+            // Track initial supply in year 1
+            mintedByYear[1] = _initialSupply;
+            
             // Emit event for transparency - now shows vesting contract
             emit InitialDistribution(_vestingContract, _initialSupply, block.timestamp);
         }
@@ -183,6 +186,9 @@ contract HyraToken is
             _mint(_initialHolder, _initialSupply);
             totalMintedSupply = _initialSupply;
             
+            // Track initial supply in year 1
+            mintedByYear[1] = _initialSupply;
+            
             // Emit event for transparency
             emit InitialDistribution(_initialHolder, _initialSupply, block.timestamp);
         }
@@ -218,8 +224,9 @@ contract HyraToken is
         
         // Get annual cap for current year
         uint256 annualCap = _getAnnualMintCap(currentMintYear);
-        uint256 remainingMintCapacity = annualCap > (mintedThisYear + pendingMintAmount) ? 
-            annualCap - (mintedThisYear + pendingMintAmount) : 0;
+        uint256 mintedInCurrentYear = mintedByYear[currentMintYear];
+        uint256 remainingMintCapacity = annualCap > (mintedInCurrentYear + pendingMintAmount) ? 
+            annualCap - (mintedInCurrentYear + pendingMintAmount) : 0;
         
         if (_amount > remainingMintCapacity) {
             revert ExceedsAnnualMintCap(_amount, remainingMintCapacity);
@@ -264,9 +271,11 @@ contract HyraToken is
         request.executed = true;
         
         // Update tracking - use the year when request was created, not current year
-        uint256 requestYear = _getYearFromTimestamp(request.approvedAt);
+        // Calculate the year based on the contract's year tracking system
+        uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
         mintedByYear[requestYear] += request.amount;
-        mintedThisYear += request.amount;
+        // Remove mintedThisYear update to prevent cross-year attribution
+        // mintedThisYear should only track current year mints, not historical ones
         totalMintedSupply += request.amount;
         
         // Release reserved amount
@@ -334,7 +343,8 @@ contract HyraToken is
             
             currentMintYear += yearsPassed;
             mintYearStartTime += yearsPassed * YEAR_DURATION;
-            mintedThisYear = 0; // Reset annual minted amount
+            // Remove mintedThisYear reset since we now use mintedByYear for tracking
+            // mintedThisYear = 0; // Reset annual minted amount
             
             emit MintYearReset(currentMintYear, block.timestamp);
         }
@@ -442,12 +452,9 @@ contract HyraToken is
         
         uint256 annualCap = _getAnnualMintCap(year);
         
-        // If year would reset, full capacity is available
-        if (block.timestamp >= mintYearStartTime + YEAR_DURATION) {
-            return annualCap;
-        }
-        
-        return annualCap > mintedThisYear ? annualCap - mintedThisYear : 0;
+        // Use mintedByYear to get accurate minted amount for the calculated year
+        uint256 mintedInYear = mintedByYear[year];
+        return annualCap > mintedInYear ? annualCap - mintedInYear : 0;
     }
 
     /**
@@ -475,10 +482,11 @@ contract HyraToken is
      * @notice Get amount minted in current year
      */
     function getMintedThisYear() external view returns (uint256) {
+        uint256 year = currentMintYear;
         if (block.timestamp >= mintYearStartTime + YEAR_DURATION) {
-            return 0; // Would reset if called
+            year += (block.timestamp - mintYearStartTime) / YEAR_DURATION;
         }
-        return mintedThisYear;
+        return mintedByYear[year];
     }
 
     /**
@@ -534,5 +542,20 @@ contract HyraToken is
         // Simple year calculation based on 365 days per year
         // This is an approximation - for production, consider using a more precise method
         return (timestamp / YEAR_DURATION) + 1;
+    }
+
+    /**
+     * @notice Calculate year from timestamp based on contract's year tracking
+     * @param timestamp The timestamp to convert
+     * @return year The year number based on contract's mintYearStartTime
+     */
+    function _calculateYearFromTimestamp(uint256 timestamp) internal view returns (uint256) {
+        if (timestamp < mintYearStartTime) {
+            return 1; // Before contract start, assume year 1
+        }
+        
+        // Calculate which year the timestamp falls into based on mintYearStartTime
+        uint256 yearsPassed = (timestamp - mintYearStartTime) / YEAR_DURATION;
+        return 1 + yearsPassed; // Year 1 + years passed
     }
 }
