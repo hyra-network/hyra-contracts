@@ -8,7 +8,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
   let owner: any;
   let beneficiary: any;
 
-  const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5B tokens
+  const INITIAL_SUPPLY = ethers.utils.parseEther("2500000000"); // 2.5B tokens
 
   async function deploySecureTokenFixture() {
     const [deployer, ownerAddr, beneficiaryAddr] = await ethers.getSigners();
@@ -24,7 +24,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
     await proxyDeployer.waitForDeployment();
     
     const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.address);
+    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.getAddress());
     await proxyAdmin.waitForDeployment();
     
     // Use a mock vesting address for testing
@@ -36,7 +36,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       "HYRA-S",
       INITIAL_SUPPLY,
       mockVestingAddress, // Use vesting contract instead of single holder
-      ownerAddr.address // governance
+      ownerAddr.getAddress() // governance
     ]);
     
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
@@ -76,7 +76,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
     await proxyDeployer.waitForDeployment();
     
     const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.address);
+    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.getAddress());
     await proxyAdmin.waitForDeployment();
     
     // Deploy with legacy method (RISKY)
@@ -84,8 +84,8 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       "Hyra Token Legacy",
       "HYRA-L",
       INITIAL_SUPPLY,
-      beneficiaryAddr.address, // Single holder (RISKY)
-      ownerAddr.address
+      beneficiaryAddr.getAddress(), // Single holder (RISKY)
+      ownerAddr.getAddress()
     ]);
     
     const legacyProxy = await proxyDeployer.deployProxy.staticCall(
@@ -120,7 +120,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       
       // Verify tokens are minted to vesting contract, not single holder
       expect(await token.balanceOf(fixture.mockVesting)).to.equal(INITIAL_SUPPLY);
-      expect(await token.balanceOf(beneficiary.address)).to.equal(0);
+      expect(await token.balanceOf(beneficiary.getAddress())).to.equal(0);
       
       console.log("SECURE: Tokens distributed to vesting contract");
       console.log(`   - Vesting contract balance: ${ethers.formatEther(INITIAL_SUPPLY)} tokens`);
@@ -132,10 +132,10 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       const legacyToken = fixture.token;
       
       // Verify tokens are minted to single holder (RISKY)
-      expect(await legacyToken.balanceOf(fixture.beneficiary.address)).to.equal(INITIAL_SUPPLY);
+      expect(await legacyToken.balanceOf(fixture.beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
       
       // Demonstrate the risk: single holder can transfer immediately
-      const transferAmount = ethers.parseEther("1000000");
+      const transferAmount = ethers.utils.parseEther("1000000");
       await expect(
         legacyToken.connect(fixture.beneficiary).transfer(
           "0x9999999999999999999999999999999999999999", 
@@ -161,11 +161,11 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       await proxyDeployer.waitForDeployment();
       
       const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-      const proxyAdmin = await ProxyAdmin.deploy(fixture.owner.address);
+      const proxyAdmin = await ProxyAdmin.deploy(fixture.owner.getAddress());
       await proxyAdmin.waitForDeployment();
       
       // Try to initialize with amount exceeding 5% limit
-      const excessiveSupply = ethers.parseEther("2500000001"); // Just over 5%
+      const excessiveSupply = ethers.utils.parseEther("2500000001"); // Just over 5%
       const mockVestingAddress = "0x1234567890123456789012345678901234567890";
       
       const tokenInit = Token.interface.encodeFunctionData("initialize", [
@@ -173,7 +173,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
         "TEST",
         excessiveSupply,
         mockVestingAddress,
-        fixture.owner.address
+        fixture.owner.getAddress()
       ]);
       
       await expect(
@@ -183,7 +183,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
           tokenInit,
           "TOKEN"
         )
-      ).to.be.revertedWith("Initial supply exceeds 5% of max supply");
+      ).to.be.revertedWithCustomError("Initial supply exceeds 5% of max supply");
       
       console.log("Supply limit enforced: Cannot exceed 5% of max supply");
     });
@@ -193,12 +193,12 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       token = fixture.token;
       owner = fixture.owner;
       
-      const mintAmount = ethers.parseEther("1000000");
+      const mintAmount = ethers.utils.parseEther("1000000");
       const purpose = "Test mint request";
       
       // Create mint request (should succeed)
-      const tx = await token.connect(owner).createMintRequest(
-        fixture.beneficiary.address,
+      const tx = await token.connect(owner).connect(governance).createMintRequest(
+        fixture.beneficiary.getAddress(),
         mintAmount,
         purpose
       );
@@ -267,7 +267,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       // Verify the fix is working
       const secureFixture = await loadFixture(deploySecureTokenFixture);
       expect(await secureFixture.token.balanceOf(secureFixture.mockVesting)).to.equal(INITIAL_SUPPLY);
-      expect(await secureFixture.token.owner()).to.equal(secureFixture.owner.address);
+      expect(await secureFixture.token.owner()).to.equal(secureFixture.owner.getAddress());
     });
   });
 });

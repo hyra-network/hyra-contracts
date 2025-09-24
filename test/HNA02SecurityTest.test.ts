@@ -28,7 +28,7 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
     const MockMultiSigWallet = await ethers.getContractFactory("MockMultiSigWallet");
     multisigWallet = await MockMultiSigWallet.deploy();
     
-    const signers = [signer1.address, signer2.address, signer3.address];
+    const signers = [signer1.getAddress(), signer2.getAddress(), signer3.getAddress()];
     await multisigWallet.initialize(signers, REQUIRED_SIGNATURES);
 
     // 2. Deploy MultiSigProxyAdmin
@@ -54,13 +54,13 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
     await token.initialize(
       "Hyra Token",
       "HYRA",
-      ethers.parseEther("1000000"),
-      owner.address, // Mock vesting contract
+      ethers.utils.parseEther("1000000"),
+      owner.getAddress(), // Mock vesting contract
       multisigWallet.getAddress() // Owner is multisig
     );
 
     // 4. Add proxy to management
-    await proxyAdmin.addProxy(await token.getAddress(), "HyraToken");
+    await proxyAdmin.connect(owner).addProxy(await token.getAddress(), "HyraToken");
 
     return {
       multisigWallet,
@@ -319,7 +319,7 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
       const pendingUpgrade = await proxyAdmin.getPendingUpgrade(await token.getAddress());
       expect(pendingUpgrade.implementation).to.equal(await newImpl.getAddress());
       expect(pendingUpgrade.reason).to.equal("Transparent upgrade");
-      expect(pendingUpgrade.proposer).to.equal(owner.address);
+      expect(pendingUpgrade.proposer).to.equal(owner.getAddress());
     });
   });
 

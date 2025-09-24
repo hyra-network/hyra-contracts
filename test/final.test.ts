@@ -22,39 +22,39 @@ describe("Final Comprehensive Testing", function () {
       expect(await token.owner()).to.eq(await timelock.getAddress());
       
       // Test balance and transfer
-      const balance1 = await token.balanceOf(voter1.address);
-      const balance2 = await token.balanceOf(voter2.address);
+      const balance1 = await token.balanceOf(voter1.getAddress());
+      const balance2 = await token.balanceOf(voter2.getAddress());
       expect(balance1).to.be.gt(0);
       expect(balance2).to.be.gt(0);
       
       // Test transfer
-      const transferAmount = ethers.parseEther("1000");
-      await token.connect(voter1).transfer(alice.address, transferAmount);
-      expect(await token.balanceOf(alice.address)).to.eq(transferAmount);
+      const transferAmount = ethers.utils.parseEther("1000");
+      await token.connect(voter1).transfer(alice.getAddress(), transferAmount);
+      expect(await token.balanceOf(alice.getAddress())).to.eq(transferAmount);
       
       // Test allowance and approve
-      const allowanceAmount = ethers.parseEther("500");
-      await token.connect(alice).approve(bob.address, allowanceAmount);
-      expect(await token.allowance(alice.address, bob.address)).to.eq(allowanceAmount);
+      const allowanceAmount = ethers.utils.parseEther("500");
+      await token.connect(alice).approve(bob.getAddress(), allowanceAmount);
+      expect(await token.allowance(alice.getAddress(), bob.getAddress())).to.eq(allowanceAmount);
       
       // Test transferFrom
-      await token.connect(bob).transferFrom(alice.address, bob.address, allowanceAmount);
-      expect(await token.balanceOf(bob.address)).to.eq(allowanceAmount);
+      await token.connect(bob).transferFrom(alice.getAddress(), bob.getAddress(), allowanceAmount);
+      expect(await token.balanceOf(bob.getAddress())).to.eq(allowanceAmount);
       
       // Test burn
-      const burnAmount = ethers.parseEther("100");
-      const balanceBefore = await token.balanceOf(voter1.address);
+      const burnAmount = ethers.utils.parseEther("100");
+      const balanceBefore = await token.balanceOf(voter1.getAddress());
       await token.connect(voter1).burn(burnAmount);
-      expect(await token.balanceOf(voter1.address)).to.eq(balanceBefore - burnAmount);
+      expect(await token.balanceOf(voter1.getAddress())).to.eq(balanceBefore - burnAmount);
       
       // Test delegation
-      await token.connect(alice).delegate(alice.address);
-      expect(await token.getVotes(alice.address)).to.eq(transferAmount - allowanceAmount);
+      await token.connect(alice).delegate(alice.getAddress());
+      expect(await token.getVotes(alice.getAddress())).to.eq(transferAmount - allowanceAmount);
       
       // Test minting functions
       expect(await token.getMintedThisYear()).to.eq(0);
       expect(await token.currentMintYear()).to.eq(1);
-      expect(await token.getRemainingMintCapacity()).to.eq(ethers.parseEther("2500000000"));
+      expect(await token.getRemainingMintCapacity()).to.eq(ethers.utils.parseEther("2500000000"));
       
       // Test pause state
       expect(await token.paused()).to.eq(false);
@@ -63,14 +63,14 @@ describe("Final Comprehensive Testing", function () {
     it("should test mint request workflow", async function () {
       const { token, governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
-      const mintAmount = ethers.parseEther("1000000");
+      const mintAmount = ethers.utils.parseEther("1000000");
       
       // Create mint request via governance
       await proposeVoteQueueExecute(
         governor,
         [await token.getAddress()],
         [0n],
-        [token.interface.encodeFunctionData("createMintRequest", [alice.address, mintAmount, "Test mint"])],
+        [token.interface.encodeFunctionData("createMintRequest", [alice.getAddress(), mintAmount, "Test mint"])],
         "Create mint request",
         ProposalType.STANDARD,
         { voter1, voter2 }
@@ -78,7 +78,7 @@ describe("Final Comprehensive Testing", function () {
 
       // Test mint request data
       const request = await token.mintRequests(0);
-      expect(request.recipient).to.eq(alice.address);
+      expect(request.recipient).to.eq(alice.getAddress());
       expect(request.amount).to.eq(mintAmount);
       expect(request.executed).to.eq(false);
       // Note: requestTime and description fields may not be available in the struct
@@ -87,16 +87,16 @@ describe("Final Comprehensive Testing", function () {
       expect(await token.mintRequestCount()).to.eq(1);
       
       // Test execution delay
-      await expect(token.executeMintRequest(0)).to.be.revertedWithCustomError(token, "MintDelayNotMet");
+      await expect(token.connect(governance).executeMintRequest(0)).to.be.revertedWithCustomError(token, "MintDelayNotMet");
       
       // Wait for delay and execute
       await time.increase(2 * 24 * 60 * 60 + 1);
-      await token.executeMintRequest(0);
+      await token.connect(governance).executeMintRequest(0);
       
       // Verify execution
       const executedRequest = await token.mintRequests(0);
       expect(executedRequest.executed).to.eq(true);
-      expect(await token.balanceOf(alice.address)).to.eq(mintAmount);
+      expect(await token.balanceOf(alice.getAddress())).to.eq(mintAmount);
       expect(await token.getMintedThisYear()).to.eq(mintAmount);
     });
   });
@@ -141,14 +141,14 @@ describe("Final Comprehensive Testing", function () {
       
       // Test initial security council state
       expect(await governor.securityCouncilMemberCount()).to.eq(0);
-      expect(await governor.isSecurityCouncilMember(alice.address)).to.eq(false);
+      expect(await governor.isSecurityCouncilMember(alice.getAddress())).to.eq(false);
       
       // Add security council member via governance
-      await addSecurityCouncilMemberViaDAO(governor, alice.address, voter1, voter2);
+      await addSecurityCouncilMemberViaDAO(governor, alice.getAddress(), voter1, voter2);
       
       // Test security council state after addition
       expect(await governor.securityCouncilMemberCount()).to.eq(1);
-      expect(await governor.isSecurityCouncilMember(alice.address)).to.eq(true);
+      expect(await governor.isSecurityCouncilMember(alice.getAddress())).to.eq(true);
       
       // Test quorum calculation for different proposal types
       const standardQuorum = await governor.getProposalQuorum(1);
@@ -261,13 +261,13 @@ describe("Final Comprehensive Testing", function () {
       const { token, governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // 1. Create proposal to mint tokens
-      const mintAmount = ethers.parseEther("1000000");
+      const mintAmount = ethers.utils.parseEther("1000000");
       
       await proposeVoteQueueExecute(
         governor,
         [await token.getAddress()],
         [0n],
-        [token.interface.encodeFunctionData("createMintRequest", [alice.address, mintAmount, "DAO workflow test"])],
+        [token.interface.encodeFunctionData("createMintRequest", [alice.getAddress(), mintAmount, "DAO workflow test"])],
         "Complete DAO workflow test",
         ProposalType.STANDARD,
         { voter1, voter2 }
@@ -275,10 +275,10 @@ describe("Final Comprehensive Testing", function () {
       
       // 2. Wait for mint delay and execute
       await time.increase(2 * 24 * 60 * 60 + 1);
-      await token.executeMintRequest(0);
+      await token.connect(governance).executeMintRequest(0);
       
       // 3. Verify result
-      expect(await token.balanceOf(alice.address)).to.eq(mintAmount);
+      expect(await token.balanceOf(alice.getAddress())).to.eq(mintAmount);
       expect(await token.getMintedThisYear()).to.eq(mintAmount);
       
       // 4. Test pause/unpause workflow
@@ -315,12 +315,12 @@ describe("Final Comprehensive Testing", function () {
       
       // Test unauthorized access
       await expect(
-        token.connect(alice).pause()
+        token.connect(alice).connect(governance).pause()
       ).to.be.revertedWithCustomError(token, "OwnableUnauthorizedAccount");
       
       // Test direct mint (should be disabled)
       await expect(
-        token.connect(alice).mint(alice.address, ethers.parseEther("1000"))
+        token.connect(alice).mint(alice.getAddress(), ethers.utils.parseEther("1000"))
       ).to.be.revertedWithCustomError(token, "DirectMintDisabled");
       
       // Test emergency proposal without security council

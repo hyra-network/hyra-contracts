@@ -18,21 +18,21 @@ describe("Comprehensive DAO Testing", function () {
       expect(await token.symbol()).to.eq("HYRA");
       expect(await token.totalSupply()).to.eq(INITIAL_SUPPLY);
       expect(await token.owner()).to.eq(await timelock.getAddress());
-      expect(await token.balanceOf(voter1.address)).to.eq(INITIAL_SUPPLY - ethers.parseEther("400000"));
-      expect(await token.balanceOf(voter2.address)).to.eq(ethers.parseEther("400000"));
+      expect(await token.balanceOf(voter1.getAddress())).to.eq(INITIAL_SUPPLY - ethers.utils.parseEther("400000"));
+      expect(await token.balanceOf(voter2.getAddress())).to.eq(ethers.utils.parseEther("400000"));
     });
 
     it("should handle minting with annual caps", async function () {
       const { token, governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // Test minting within annual cap
-      const amount = ethers.parseEther("1000000"); // 1M tokens
+      const amount = ethers.utils.parseEther("1000000"); // 1M tokens
       
       await proposeVoteQueueExecute(
         governor,
         [await token.getAddress()],
         [0n],
-        [token.interface.encodeFunctionData("createMintRequest", [alice.address, amount, "Test mint"])],
+        [token.interface.encodeFunctionData("createMintRequest", [alice.getAddress(), amount, "Test mint"])],
         "mint test",
         ProposalType.STANDARD,
         { voter1, voter2 }
@@ -42,9 +42,9 @@ describe("Comprehensive DAO Testing", function () {
       await time.increase(2 * 24 * 60 * 60 + 1);
       
       // Execute mint
-      await token.executeMintRequest(0);
+      await token.connect(governance).executeMintRequest(0);
       
-      expect(await token.balanceOf(alice.address)).to.eq(amount);
+      expect(await token.balanceOf(alice.getAddress())).to.eq(amount);
       expect(await token.getMintedThisYear()).to.eq(amount);
     });
 
@@ -52,14 +52,14 @@ describe("Comprehensive DAO Testing", function () {
       const { token, governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // Try to mint more than annual cap
-      const excessiveAmount = ethers.parseEther("3000000000"); // 3B tokens (exceeds 2.5B cap)
+      const excessiveAmount = ethers.utils.parseEther("3000000000"); // 3B tokens (exceeds 2.5B cap)
       
       await expect(
         proposeVoteQueueExecute(
           governor,
           [await token.getAddress()],
           [0n],
-          [token.interface.encodeFunctionData("createMintRequest", [alice.address, excessiveAmount, "Excessive mint"])],
+          [token.interface.encodeFunctionData("createMintRequest", [alice.getAddress(), excessiveAmount, "Excessive mint"])],
           "excessive mint test",
           ProposalType.STANDARD,
           { voter1, voter2 }
@@ -98,12 +98,12 @@ describe("Comprehensive DAO Testing", function () {
     it("should handle burning tokens", async function () {
       const { token, voter1 } = await loadFixture(deployCore);
       
-      const balanceBefore = await token.balanceOf(voter1.address);
-      const burnAmount = ethers.parseEther("1000");
+      const balanceBefore = await token.balanceOf(voter1.getAddress());
+      const burnAmount = ethers.utils.parseEther("1000");
       
       await token.connect(voter1).burn(burnAmount);
       
-      expect(await token.balanceOf(voter1.address)).to.eq(balanceBefore - burnAmount);
+      expect(await token.balanceOf(voter1.getAddress())).to.eq(balanceBefore - burnAmount);
     });
   });
 
@@ -129,7 +129,7 @@ describe("Comprehensive DAO Testing", function () {
       const { governor, token, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // Add security council member first
-      await addSecurityCouncilMemberViaDAO(governor, alice.address, voter1, voter2);
+      await addSecurityCouncilMemberViaDAO(governor, alice.getAddress(), voter1, voter2);
       
       // Test quorum calculation for different proposal types
       const targets = [await token.getAddress()];
@@ -160,9 +160,9 @@ describe("Comprehensive DAO Testing", function () {
       const { governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // Add security council member
-      await addSecurityCouncilMemberViaDAO(governor, alice.address, voter1, voter2);
+      await addSecurityCouncilMemberViaDAO(governor, alice.getAddress(), voter1, voter2);
       
-      expect(await governor.isSecurityCouncilMember(alice.address)).to.eq(true);
+      expect(await governor.isSecurityCouncilMember(alice.getAddress())).to.eq(true);
       expect(await governor.securityCouncilMemberCount()).to.eq(1);
     });
 
@@ -243,7 +243,7 @@ describe("Comprehensive DAO Testing", function () {
       const { timelock, proxyAdmin, token, governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // Add security council member for emergency proposal
-      await addSecurityCouncilMemberViaDAO(governor, alice.address, voter1, voter2);
+      await addSecurityCouncilMemberViaDAO(governor, alice.getAddress(), voter1, voter2);
       
       // Deploy new implementation
       const newImplementation = await ethers.getContractFactory("HyraToken");
@@ -442,7 +442,7 @@ describe("Comprehensive DAO Testing", function () {
     it("should track deployed proxies by deployer", async function () {
       const { proxyDeployer, deployer } = await loadFixture(deployCore);
       
-      const deployerProxies = await proxyDeployer.getProxiesByDeployer(deployer.address);
+      const deployerProxies = await proxyDeployer.getProxiesByDeployer(deployer.getAddress());
       expect(deployerProxies.length).to.be.gt(0);
     });
   });
@@ -452,13 +452,13 @@ describe("Comprehensive DAO Testing", function () {
       const { token, governor, timelock, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // 1. Create proposal to mint tokens
-      const mintAmount = ethers.parseEther("1000000");
+      const mintAmount = ethers.utils.parseEther("1000000");
       
       await proposeVoteQueueExecute(
         governor,
         [await token.getAddress()],
         [0n],
-        [token.interface.encodeFunctionData("createMintRequest", [alice.address, mintAmount, "DAO workflow test"])],
+        [token.interface.encodeFunctionData("createMintRequest", [alice.getAddress(), mintAmount, "DAO workflow test"])],
         "Complete DAO workflow test",
         ProposalType.STANDARD,
         { voter1, voter2 }
@@ -468,17 +468,17 @@ describe("Comprehensive DAO Testing", function () {
       await time.increase(2 * 24 * 60 * 60 + 1);
       
       // 3. Execute mint
-      await token.executeMintRequest(0);
+      await token.connect(governance).executeMintRequest(0);
       
       // 4. Verify result
-      expect(await token.balanceOf(alice.address)).to.eq(mintAmount);
+      expect(await token.balanceOf(alice.getAddress())).to.eq(mintAmount);
     });
 
     it("should handle security council emergency proposal", async function () {
       const { governor, token, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // Add security council member
-      await addSecurityCouncilMemberViaDAO(governor, alice.address, voter1, voter2);
+      await addSecurityCouncilMemberViaDAO(governor, alice.getAddress(), voter1, voter2);
       
       // Create emergency proposal using security council member
       const tx = await governor.connect(alice).proposeWithType(
@@ -501,15 +501,15 @@ describe("Comprehensive DAO Testing", function () {
       await time.increase(1); // 1 block voting delay
       
       // Vote and execute
-      await (await governor.connect(voter1).castVote(proposalId, 1)).wait();
-      await (await governor.connect(voter2).castVote(proposalId, 1)).wait();
+      await (await governor.connect(voter1).connect(voter).castVote(proposalId, 1)).wait();
+      await (await governor.connect(voter2).connect(voter).castVote(proposalId, 1)).wait();
       
       // Wait for voting period
       await time.increase(10); // 10 blocks voting period
       
       // Queue and execute
       try {
-        await (await governor.queue(
+        await (await governor.connect(proposer).queue(
           [await token.getAddress()],
           [0n],
           [token.interface.encodeFunctionData("pause", [])],
@@ -517,7 +517,7 @@ describe("Comprehensive DAO Testing", function () {
         )).wait();
         
         await time.increase(7 * 24 * 60 * 60 + 1); // 7 days
-        await (await governor.execute(
+        await (await governor.connect(executor).connect(executor).execute(
           [await token.getAddress()],
           [0n],
           [token.interface.encodeFunctionData("pause", [])],
@@ -544,7 +544,7 @@ describe("Comprehensive DAO Testing", function () {
           governor,
           [await token.getAddress()],
           [0n],
-          [token.interface.encodeFunctionData("createMintRequest", [ethers.ZeroAddress, ethers.parseEther("1000"), "test"])],
+          [token.interface.encodeFunctionData("createMintRequest", [ethers.ZeroAddress, ethers.utils.parseEther("1000"), "test"])],
           "Zero address test",
           ProposalType.STANDARD,
           { voter1, voter2 }
@@ -557,7 +557,7 @@ describe("Comprehensive DAO Testing", function () {
       
       // Try to pause without permission
       await expect(
-        token.connect(alice).pause()
+        token.connect(alice).connect(governance).pause()
       ).to.be.revertedWithCustomError(token, "OwnableUnauthorizedAccount");
     });
 

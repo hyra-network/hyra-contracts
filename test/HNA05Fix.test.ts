@@ -12,15 +12,15 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     await timelockImplementation.waitForDeployment();
 
     // Setup role arrays
-    const proposers = [proposer1.address];
-    const executors = [executor1.address];
+    const proposers = [proposer1.getAddress()];
+    const executors = [executor1.getAddress()];
 
     // Create proxy and initialize timelock
     const initData = HyraTimelock.interface.encodeFunctionData("initialize", [
       86400, // 1 day delay
       proposers,
       executors,
-      owner.address
+      owner.getAddress()
     ]);
 
     const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
@@ -48,9 +48,9 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
       "Test Token",
       "TEST",
-      ethers.parseEther("1000000"),
-      alice.address,
-      bob.address
+      ethers.utils.parseEther("1000000"),
+      alice.getAddress(),
+      bob.getAddress()
     ]);
 
     const tokenProxy = await HyraTransparentUpgradeableProxy.deploy(
@@ -133,11 +133,11 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     const { proxyAdmin, tokenProxy, newTokenImplementation, owner } = await loadFixture(deployTestContracts);
 
     // Add proxy to management (owner can do this directly)
-    await proxyAdmin.connect(owner).addProxy(await tokenProxy.getAddress(), "Test Token");
+    await proxyAdmin.connect(owner).connect(owner).addProxy(await tokenProxy.getAddress(), "Test Token");
 
     // Directly upgrade through HyraProxyAdmin
     await expect(
-      proxyAdmin.connect(owner).upgradeAndCall(
+      proxyAdmin.connect(owner).connect(owner).upgradeAndCall(
         await tokenProxy.getAddress(),
         await newTokenImplementation.getAddress(),
         "0x"
@@ -177,9 +177,9 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     const initData = HyraToken.interface.encodeFunctionData("initialize", [
       "Deployed Token",
       "DEPLOY",
-      ethers.parseEther("1000000"),
-      alice.address,
-      bob.address
+      ethers.utils.parseEther("1000000"),
+      alice.getAddress(),
+      bob.getAddress()
     ]);
 
     const tx = await proxyDeployer.deployProxy(
@@ -195,7 +195,7 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     const receipt = await tx.wait();
     const event = receipt?.logs.find(log => {
       try {
-        const parsed = proxyDeployer.interface.parseLog(log);
+        const parsed = proxyDeployer.interface.interface.parseLog(log);
         return parsed?.name === "ProxyDeployed";
       } catch {
         return false;

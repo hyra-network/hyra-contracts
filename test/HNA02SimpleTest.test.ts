@@ -10,7 +10,7 @@ describe("HNA-02: Simple Security Test", function () {
     const MockMultiSigWallet = await ethers.getContractFactory("MockMultiSigWallet");
     const multisig = await MockMultiSigWallet.deploy();
     
-    const signers = [signer1.address, signer2.address];
+    const signers = [signer1.getAddress(), signer2.getAddress()];
     await multisig.initialize(signers, 2); // 2/2 multisig
 
     // Deploy SecureProxyAdmin
