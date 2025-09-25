@@ -175,7 +175,7 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         bytes32 salt
     ) external view returns (address computedAddress) {
         bytes memory bytecode = abi.encodePacked(
-            type(TransparentUpgradeableProxy).creationCode,
+            type(HyraTransparentUpgradeableProxy).creationCode,
             abi.encode(implementation, proxyAdmin, initData)
         );
         

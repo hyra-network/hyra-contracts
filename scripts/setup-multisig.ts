@@ -51,17 +51,17 @@ export class SecureTokenDistributionSetup {
     // This is a mock implementation for demo
     const mockMultisigAddress = await this.deployMockMultisig(config);
     
-    console.log(`Ví đa chữ ký đã được tạo: ${mockMultisigAddress}`);
-    console.log(`Người ký: ${config.signers.join(", ")}`);
+    console.log(`Mock multisig wallet created: ${mockMultisigAddress}`);
+    console.log(`Signers: ${config.signers.join(", ")}`);
     console.log(`Threshold: ${config.threshold}/${config.signers.length}`);
     
     return mockMultisigAddress;
   }
 
   /**
-   * Tạo các lịch trình vesting cho phân phối token an toàn
-   * @param schedules Danh sách lịch trình vesting
-   * @returns Cấu hình vesting
+   * Create vesting schedules for safe token distribution
+   * @param schedules List of vesting schedules
+   * @returns Vesting configuration
    */
   createVestingSchedules(schedules: VestingSchedule[]): any {
     console.log("Creating vesting schedules...");
@@ -76,26 +76,26 @@ export class SecureTokenDistributionSetup {
       purposes: schedules.map(s => s.purpose)
     };
     
-    console.log(`Đã tạo ${schedules.length} lịch trình vesting`);
+    console.log(`Created ${schedules.length} vesting schedules`);
     
     return vestingConfig;
   }
 
   /**
-   * Triển khai DAO với phân phối token an toàn
-   * @param multisigAddress Địa chỉ ví đa chữ ký
-   * @param vestingConfig Cấu hình vesting
+   * Deploy DAO with safe token distribution
+   * @param multisigAddress Multisig wallet address
+   * @param vestingConfig Vesting configuration
    */
   async deploySecureDAO(multisigAddress: string, vestingConfig: any) {
-    console.log("Triển khai DAO với phân phối token an toàn...");
+    console.log("Deploying DAO with safe token distribution...");
     
-    // Cấu hình DAO
+    // DAO configuration
     const daoConfig = {
       // Token config
       tokenName: "Hyra Token",
       tokenSymbol: "HYRA",
       initialSupply: ethers.parseEther("2500000000"), // 2.5B tokens
-      vestingContract: multisigAddress, // Sẽ được thay thế bằng vesting contract
+      vestingContract: multisigAddress, // Will be replaced with vesting contract
       
       // Timelock config
       timelockDelay: 7 * 24 * 60 * 60, // 7 days
@@ -121,10 +121,10 @@ export class SecureTokenDistributionSetup {
     const DAOInitializer = await ethers.getContractFactory("HyraDAOInitializer");
     const daoInitializer = await DAOInitializer.deploy();
     
-    console.log("Đang triển khai DAO...");
+    console.log("Deploying DAO...");
     const deploymentResult = await daoInitializer.deployDAO(daoConfig);
     
-    console.log("DAO đã được triển khai thành công!");
+    console.log("DAO deployed successfully!");
     console.log(`Token Proxy: ${deploymentResult.tokenProxy}`);
     console.log(`Timelock Proxy: ${deploymentResult.timelockProxy}`);
     console.log(`Governor Proxy: ${deploymentResult.governorProxy}`);
@@ -134,14 +134,14 @@ export class SecureTokenDistributionSetup {
   }
 
   /**
-   * Mock implementation cho ví đa chữ ký (trong thực tế dùng Gnosis Safe)
+   * Mock implementation for multisig wallet (use Gnosis Safe in practice)
    */
   private async deployMockMultisig(config: MultisigConfig): Promise<string> {
-    // Trong thực tế, sử dụng Gnosis Safe SDK:
+    // In practice, use Gnosis Safe SDK:
     // const safeSdk = await Safe.create({ ethAdapter, safeAddress })
     // const safeSdk = await safeSdk.createSafe({ safeAccountConfig })
     
-    // Mock implementation cho demo
+    // Mock implementation for demo
     const MockMultisig = await ethers.getContractFactory("MockMultisig");
     const mockMultisig = await MockMultisig.deploy(
       config.signers,
@@ -154,7 +154,7 @@ export class SecureTokenDistributionSetup {
   }
 
   /**
-   * Tạo báo cáo phân phối token
+   * Create token distribution report
    */
   generateDistributionReport(deploymentResult: any): string {
     const report = `
@@ -167,23 +167,23 @@ export class SecureTokenDistributionSetup {
 - **Vesting Proxy**: ${deploymentResult.vestingProxy}
 - **Proxy Admin**: ${deploymentResult.proxyAdmin}
 
-## Bảo Mật
-- Sử dụng ví đa chữ ký thay vì địa chỉ đơn lẻ
-- Token được phân phối dần qua vesting contract
-- Quản trị được điều khiển bởi Timelock
-- Không có điểm tập trung hóa duy nhất
+## Security
+- Use multisig wallet instead of single address
+- Tokens distributed gradually through vesting contract
+- Governance controlled by Timelock
+- No single centralization point
 
-## Lợi Ích
-1. **Giảm rủi ro tập trung hóa**: Không có một địa chỉ nào nắm giữ toàn bộ token ban đầu
-2. **Tăng tính minh bạch**: Tất cả phân phối được ghi lại trên blockchain
-3. **Bảo vệ khỏi tấn công**: Cần nhiều chữ ký để thực hiện giao dịch quan trọng
-4. **Phân phối công bằng**: Token được phân phối dần theo thời gian
+## Benefits
+1. **Reduced centralization risk**: No single address holds all initial tokens
+2. **Increased transparency**: All distributions recorded on blockchain
+3. **Attack protection**: Multiple signatures required for important transactions
+4. **Fair distribution**: Tokens distributed gradually over time
 
 ## HNA-01 Resolution
-Vấn đề tập trung hóa trong phân phối token ban đầu đã được giải quyết bằng:
-- Ví đa chữ ký thay vì địa chỉ đơn lẻ
-- Hợp đồng vesting để phân phối dần
-- Quản trị phi tập trung thông qua DAO
+Centralization issue in initial token distribution resolved by:
+- Multisig wallet instead of single address
+- Vesting contract for gradual distribution
+- Decentralized governance through DAO
 `;
 
     return report;
@@ -201,11 +201,11 @@ export const MockMultisigFactory = {
   bytecode: "0x608060405234801561001057600080fd5b5060405161001d9061003a565b604051809103906000f080158015610039573d6000803e3d6000fd5b505050610047565b61004a8061005683390190565b50565b6040516100589061003a565b600060405180830381855af49150503d8060008114610093576040519150601f19603f3d011682016040523d82523d6000602084013e610098565b606091505b50509050806100a657600080fd5b5050565b6100a4806100b96000396000f3fe608060405234801561001057600080fd5b50600436106100365760003560e01c8063150b7a021461003b5780634a58db1914610059578063f2fde38b14610063575b600080fd5b61004361007f565b60405161005091906100b0565b60405180910390f35b610061610088565b005b61007d600480360381019061007891906100dc565b610092565b005b60008054905090565b610090610136565b565b61009a610136565b8173ffffffffffffffffffffffffffffffffffffffff166108fc479081150290604051600060405180830381858888f193505050501580156100df573d6000803e3d6000fd5b505050565b600080fd5b6000819050919050565b6100fb816100e8565b811461010657600080fd5b50565b600081359050610118816100f2565b92915050565b600060208284031215610134576101336100e3565b5b600061014284828501610109565b91505092915050565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006101768261014b565b9050919050565b6101868161016b565b82525050565b60006020820190506101a1600083018461017d565b9291505056fea2646970667358221220"
 };
 
-// Script chính để chạy setup
+// Main script to run setup
 export async function main() {
   const setup = new SecureTokenDistributionSetup(hre);
   
-  // Cấu hình ví đa chữ ký
+  // Configure multisig wallet
   const multisigConfig: MultisigConfig = {
     signers: [
       "0x1234567890123456789012345678901234567890", // Team member 1
@@ -214,12 +214,12 @@ export async function main() {
       "0x4567890123456789012345678901234567890123", // Technical lead
       "0x5678901234567890123456789012345678901234", // Legal advisor
     ],
-    threshold: 3, // Cần 3/5 chữ ký
+    threshold: 3, // Need 3/5 signatures
     name: "Hyra DAO Multi-sig",
     description: "Multi-signature wallet for secure token distribution and DAO governance"
   };
   
-  // Tạo lịch trình vesting
+  // Create vesting schedules
   const vestingSchedules: VestingSchedule[] = [
     {
       beneficiary: "0x1234567890123456789012345678901234567890", // Team member 1
@@ -269,28 +269,28 @@ export async function main() {
   ];
   
   try {
-    // Thiết lập ví đa chữ ký
+    // Setup multisig wallet
     const multisigAddress = await setup.setupMultisigWallet(multisigConfig);
     
-    // Tạo cấu hình vesting
+    // Create vesting configuration
     const vestingConfig = setup.createVestingSchedules(vestingSchedules);
     
-    // Triển khai DAO an toàn
+    // Deploy secure DAO
     const deploymentResult = await setup.deploySecureDAO(multisigAddress, vestingConfig);
     
-    // Tạo báo cáo
+    // Generate report
     const report = setup.generateDistributionReport(deploymentResult);
     console.log(report);
     
     console.log("\nSetup completed! HNA-01 issue has been resolved.");
     
   } catch (error) {
-    console.error("Lỗi trong quá trình thiết lập:", error);
+    console.error("Error during setup:", error);
     process.exit(1);
   }
 }
 
-// Chạy script nếu được gọi trực tiếp
+// Run script if called directly
 if (require.main === module) {
   main().catch((error) => {
     console.error(error);

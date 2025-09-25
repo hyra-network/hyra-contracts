@@ -11,9 +11,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
   let beneficiary1: SignerWithAddress;
   let beneficiary2: SignerWithAddress;
 
-  const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5B tokens
-  const VESTING_AMOUNT_1 = ethers.parseEther("500000000"); // 500M tokens
-  const VESTING_AMOUNT_2 = ethers.parseEther("300000000"); // 300M tokens
+  const INITIAL_SUPPLY = ethers.utils.parseEther("2500000000"); // 2.5B tokens
+  const VESTING_AMOUNT_1 = ethers.utils.parseEther("500000000"); // 500M tokens
+  const VESTING_AMOUNT_2 = ethers.utils.parseEther("300000000"); // 300M tokens
   const VESTING_DURATION = 365 * 24 * 60 * 60; // 1 year
   const CLIFF_DURATION = 30 * 24 * 60 * 60; // 30 days
 
@@ -65,16 +65,16 @@ describe("HyraDAOInitializer Security Fixes", function () {
         
         // Security council
         securityCouncil: [
-          owner.address,
-          beneficiary1.address,
-          beneficiary2.address
+          owner.getAddress(),
+          beneficiary1.getAddress(),
+          beneficiary2.getAddress()
         ],
         
         // Vesting config
         vestingConfig: {
           beneficiaries: [
-            beneficiary1.address,
-            beneficiary2.address
+            beneficiary1.getAddress(),
+            beneficiary2.getAddress()
           ],
           amounts: [
             VESTING_AMOUNT_1,
@@ -112,7 +112,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       await expect(tx)
         .to.emit(daoInitializer, "DAODeployed")
         .withArgs(
-          deployer.address,
+          deployer.getAddress(),
           await tx.then(t => t.value), // deployment result
           await tx.then(t => t.timestamp)
         );
@@ -128,15 +128,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -157,15 +157,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1, VESTING_AMOUNT_2], // Mismatch: 1 beneficiary, 2 amounts
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -176,7 +176,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       };
       
       // Should revert due to array length mismatch
-      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWith("Invalid vesting config");
+      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWithCustomError("Invalid vesting config");
     });
 
     it("should revert with zero vesting contract address", async function () {
@@ -192,9 +192,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -204,7 +204,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
         }
       };
       
-      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWith("InvalidConfig");
+      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWithCustomError("InvalidConfig");
     });
 
     it("should revert with empty token name or symbol", async function () {
@@ -215,15 +215,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "", // Invalid: empty name
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -233,22 +233,22 @@ describe("HyraDAOInitializer Security Fixes", function () {
         }
       };
       
-      await expect(daoInitializer.deployDAO(daoConfig1)).to.be.revertedWith("InvalidConfig");
+      await expect(daoInitializer.deployDAO(daoConfig1)).to.be.revertedWithCustomError("InvalidConfig");
       
       // Empty token symbol
       const daoConfig2 = {
         tokenName: "Hyra Token",
         tokenSymbol: "", // Invalid: empty symbol
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -258,7 +258,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
         }
       };
       
-      await expect(daoInitializer.deployDAO(daoConfig2)).to.be.revertedWith("InvalidConfig");
+      await expect(daoInitializer.deployDAO(daoConfig2)).to.be.revertedWithCustomError("InvalidConfig");
     });
   });
 
@@ -270,15 +270,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -294,7 +294,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       // Get the deployment result from the event
       const event = receipt?.logs.find(log => {
         try {
-          const decoded = daoInitializer.interface.parseLog(log);
+          const decoded = daoInitializer.interface.interface.parseLog(log);
           return decoded?.name === "DAODeployed";
         } catch {
           return false;
@@ -302,7 +302,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       });
       
       if (event) {
-        const decoded = daoInitializer.interface.parseLog(event);
+        const decoded = daoInitializer.interface.interface.parseLog(event);
         const deploymentResult = decoded?.args[1];
         
         // Verify all addresses are non-zero
@@ -326,15 +326,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -377,15 +377,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -412,15 +412,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -444,19 +444,19 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [
-          owner.address,
-          beneficiary1.address,
-          beneficiary2.address
+          owner.getAddress(),
+          beneficiary1.getAddress(),
+          beneficiary2.getAddress()
         ],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],
@@ -484,15 +484,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
         tokenName: "Hyra Token",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
-        vestingContract: owner.address,
+        vestingContract: owner.getAddress(),
         timelockDelay: 7 * 24 * 60 * 60,
         votingDelay: 1,
         votingPeriod: 10,
         proposalThreshold: 0,
         quorumPercentage: 10,
-        securityCouncil: [owner.address],
+        securityCouncil: [owner.getAddress()],
         vestingConfig: {
-          beneficiaries: [beneficiary1.address],
+          beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
           startTimes: [startTime],
           durations: [VESTING_DURATION],

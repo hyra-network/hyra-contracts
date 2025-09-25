@@ -28,7 +28,7 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
     const MockMultiSigWallet = await ethers.getContractFactory("MockMultiSigWallet");
     multisigWallet = await MockMultiSigWallet.deploy();
     
-    const signers = [signer1.address, signer2.address, signer3.address];
+    const signers = [signer1.getAddress(), signer2.getAddress(), signer3.getAddress()];
     await multisigWallet.initialize(signers, REQUIRED_SIGNATURES);
 
     // 2. Deploy MultiSigProxyAdmin
@@ -54,13 +54,13 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
     await token.initialize(
       "Hyra Token",
       "HYRA",
-      ethers.parseEther("1000000"),
-      owner.address, // Mock vesting contract
+      ethers.utils.parseEther("1000000"),
+      owner.getAddress(), // Mock vesting contract
       multisigWallet.getAddress() // Owner is multisig
     );
 
     // 4. Add proxy to management
-    await proxyAdmin.addProxy(await token.getAddress(), "HyraToken");
+    await proxyAdmin.connect(owner).addProxy(await token.getAddress(), "HyraToken");
 
     return {
       multisigWallet,
@@ -319,7 +319,7 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
       const pendingUpgrade = await proxyAdmin.getPendingUpgrade(await token.getAddress());
       expect(pendingUpgrade.implementation).to.equal(await newImpl.getAddress());
       expect(pendingUpgrade.reason).to.equal("Transparent upgrade");
-      expect(pendingUpgrade.proposer).to.equal(owner.address);
+      expect(pendingUpgrade.proposer).to.equal(owner.getAddress());
     });
   });
 
@@ -330,31 +330,31 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
       console.log("=".repeat(60));
       console.log("");
       console.log("BEFORE (RISKY):");
-      console.log("   • Single owner controls all contract upgrades");
-      console.log("   • No delay for community awareness");
-      console.log("   • No multi-signature protection");
-      console.log("   • High centralization risk");
+      console.log("   - Single owner controls all contract upgrades");
+      console.log("   - No delay for community awareness");
+      console.log("   - No multi-signature protection");
+      console.log("   - High centralization risk");
       console.log("");
       console.log("AFTER (SECURE):");
-      console.log("   • Multi-signature wallet controls upgrades");
-      console.log("   • 48-hour delay for community awareness");
-      console.log("   • Emergency upgrades with 2-hour delay");
-      console.log("   • Transparent upgrade process");
-      console.log("   • Governance integration");
+      console.log("   - Multi-signature wallet controls upgrades");
+      console.log("   - 48-hour delay for community awareness");
+      console.log("   - Emergency upgrades with 2-hour delay");
+      console.log("   - Transparent upgrade process");
+      console.log("   - Governance integration");
       console.log("");
       console.log("SECURITY IMPROVEMENTS:");
-      console.log("   • Eliminated single point of failure");
-      console.log("   • Implemented time-based security");
-      console.log("   • Added multi-signature protection");
-      console.log("   • Enhanced transparency and auditability");
-      console.log("   • Integrated with governance system");
+      console.log("   - Eliminated single point of failure");
+      console.log("   - Implemented time-based security");
+      console.log("   - Added multi-signature protection");
+      console.log("   - Enhanced transparency and auditability");
+      console.log("   - Integrated with governance system");
       console.log("");
       console.log("COMPLIANCE WITH AUDIT RECOMMENDATIONS:");
-      console.log("   ✓ Multi-signature wallet (2/3 threshold)");
-      console.log("   ✓ Time-lock with 48-hour delay");
-      console.log("   ✓ Community awareness mechanism");
-      console.log("   ✓ Governance-controlled upgrades");
-      console.log("   ✓ Transparent upgrade process");
+      console.log("   - Multi-signature wallet (2/3 threshold)");
+      console.log("   - Time-lock with 48-hour delay");
+      console.log("   - Community awareness mechanism");
+      console.log("   - Governance-controlled upgrades");
+      console.log("   - Transparent upgrade process");
       console.log("=".repeat(60));
     });
   });

@@ -36,15 +36,15 @@ describe("Simple DAO Testing", function () {
       const { token, voter1, voter2 } = await loadFixture(deployCore);
       
       // Test transfer
-      const transferAmount = ethers.parseEther("1000");
-      await token.connect(voter1).transfer(voter2.address, transferAmount);
-      expect(await token.balanceOf(voter2.address)).to.eq(ethers.parseEther("400000") + transferAmount);
+      const transferAmount = ethers.utils.parseEther("1000");
+      await token.connect(voter1).transfer(voter2.getAddress(), transferAmount);
+      expect(await token.balanceOf(voter2.getAddress())).to.eq(ethers.utils.parseEther("400000") + transferAmount);
       
       // Test burn
-      const burnAmount = ethers.parseEther("100");
-      const balanceBefore = await token.balanceOf(voter1.address);
+      const burnAmount = ethers.utils.parseEther("100");
+      const balanceBefore = await token.balanceOf(voter1.getAddress());
       await token.connect(voter1).burn(burnAmount);
-      expect(await token.balanceOf(voter1.address)).to.eq(balanceBefore - burnAmount);
+      expect(await token.balanceOf(voter1.getAddress())).to.eq(balanceBefore - burnAmount);
     });
 
     it("should handle governance proposals", async function () {
@@ -72,24 +72,24 @@ describe("Simple DAO Testing", function () {
       const { governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // Add security council member
-      await addSecurityCouncilMemberViaDAO(governor, alice.address, voter1, voter2);
+      await addSecurityCouncilMemberViaDAO(governor, alice.getAddress(), voter1, voter2);
       
       // Verify security council member
-      expect(await governor.isSecurityCouncilMember(alice.address)).to.eq(true);
+      expect(await governor.isSecurityCouncilMember(alice.getAddress())).to.eq(true);
       expect(await governor.securityCouncilMemberCount()).to.eq(1);
     });
 
     it("should handle mint requests", async function () {
       const { token, governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
-      const mintAmount = ethers.parseEther("1000000"); // 1M tokens
+      const mintAmount = ethers.utils.parseEther("1000000"); // 1M tokens
       
       // Create mint request via governance
       await proposeVoteQueueExecute(
         governor,
         [await token.getAddress()],
         [0n],
-        [token.interface.encodeFunctionData("createMintRequest", [alice.address, mintAmount, "Test mint"])],
+        [token.interface.encodeFunctionData("createMintRequest", [alice.getAddress(), mintAmount, "Test mint"])],
         "Create mint request",
         ProposalType.STANDARD,
         { voter1, voter2 }
@@ -97,7 +97,7 @@ describe("Simple DAO Testing", function () {
 
       // Check mint request was created
       const request = await token.mintRequests(0);
-      expect(request.recipient).to.eq(alice.address);
+      expect(request.recipient).to.eq(alice.getAddress());
       expect(request.amount).to.eq(mintAmount);
       expect(request.executed).to.eq(false);
     });
@@ -197,12 +197,12 @@ describe("Simple DAO Testing", function () {
       
       // Test unauthorized pause
       await expect(
-        token.connect(alice).pause()
+        token.connect(alice).connect(governance).pause()
       ).to.be.revertedWithCustomError(token, "OwnableUnauthorizedAccount");
       
       // Test direct mint (should be disabled)
       await expect(
-        token.connect(alice).mint(alice.address, ethers.parseEther("1000"))
+        token.connect(alice).mint(alice.getAddress(), ethers.utils.parseEther("1000"))
       ).to.be.revertedWithCustomError(token, "DirectMintDisabled");
     });
 
@@ -210,13 +210,13 @@ describe("Simple DAO Testing", function () {
       const { token, governor, voter1, voter2, alice } = await loadFixture(deployCore);
       
       // 1. Create proposal to mint tokens
-      const mintAmount = ethers.parseEther("1000000");
+      const mintAmount = ethers.utils.parseEther("1000000");
       
       await proposeVoteQueueExecute(
         governor,
         [await token.getAddress()],
         [0n],
-        [token.interface.encodeFunctionData("createMintRequest", [alice.address, mintAmount, "Complete workflow test"])],
+        [token.interface.encodeFunctionData("createMintRequest", [alice.getAddress(), mintAmount, "Complete workflow test"])],
         "Complete DAO workflow test",
         ProposalType.STANDARD,
         { voter1, voter2 }
@@ -226,10 +226,10 @@ describe("Simple DAO Testing", function () {
       await time.increase(2 * 24 * 60 * 60 + 1);
       
       // 3. Execute mint
-      await token.executeMintRequest(0);
+      await token.connect(governance).executeMintRequest(0);
       
       // 4. Verify result
-      expect(await token.balanceOf(alice.address)).to.eq(mintAmount);
+      expect(await token.balanceOf(alice.getAddress())).to.eq(mintAmount);
       expect(await token.getMintedThisYear()).to.eq(mintAmount);
     });
   });
