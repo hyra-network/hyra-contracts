@@ -48,7 +48,7 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
       "Test Token",
       "TEST",
-      ethers.utils.parseEther("1000000"),
+      ethers.parseEther("1000000"),
       alice.getAddress(),
       bob.getAddress()
     ]);
@@ -85,10 +85,14 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
       tokenProxy,
       newTokenImplementation,
       proposer1,
-      executor1
+      executor1,
+      owner
     } = await loadFixture(deployTestContracts);
 
-    // Add proxy to proxy admin management
+    // Add proxy to proxy admin management first
+    await proxyAdmin.connect(owner).addProxy(await tokenProxy.getAddress(), "Test Token");
+    
+    // Schedule upgrade
     await timelock.connect(proposer1).scheduleUpgrade(
       await tokenProxy.getAddress(),
       await newTokenImplementation.getAddress(),
@@ -177,7 +181,7 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     const initData = HyraToken.interface.encodeFunctionData("initialize", [
       "Deployed Token",
       "DEPLOY",
-      ethers.utils.parseEther("1000000"),
+      ethers.parseEther("1000000"),
       alice.getAddress(),
       bob.getAddress()
     ]);
