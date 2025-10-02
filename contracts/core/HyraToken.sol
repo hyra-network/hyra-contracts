@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUp
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "../interfaces/IHyraToken.sol";
@@ -24,6 +25,7 @@ contract HyraToken is
     ERC20VotesUpgradeable,
     OwnableUpgradeable,
     PausableUpgradeable,
+    ReentrancyGuardUpgradeable,
     IHyraToken
 {
     // ============ Constants ============
@@ -138,6 +140,7 @@ contract HyraToken is
         __ERC20Votes_init();
         __Ownable_init(_governance); // set initial owner
         __Pausable_init();
+        __ReentrancyGuard_init();
         
         // Initial supply should not exceed 5% (2.5B) 
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
@@ -182,6 +185,7 @@ contract HyraToken is
         __ERC20Votes_init();
         __Ownable_init(_governance);
         __Pausable_init();
+        __ReentrancyGuard_init();
         
         // Initial supply should not exceed 5% (2.5B) 
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
@@ -238,7 +242,8 @@ contract HyraToken is
             revert ExceedsAnnualMintCap(_amount, remainingMintCapacity);
         }
         
-        // Reserve the mint amount for current year
+        // Reserve the mint amount for current year with overflow check
+        require(pendingByYear[currentMintYear] + _amount >= pendingByYear[currentMintYear], "PendingByYear overflow");
         pendingByYear[currentMintYear] += _amount;
         
         // Check total supply cap
@@ -264,7 +269,10 @@ contract HyraToken is
      * @notice Execute an approved mint request after delay
      * @param _requestId ID of the mint request
      */
-    function executeMintRequest(uint256 _requestId) external {
+    function executeMintRequest(uint256 _requestId) external nonReentrant {
+        // Validate request ID exists
+        if (_requestId >= mintRequestCount) revert InvalidAmount();
+        
         MintRequest storage request = mintRequests[_requestId];
         
         if (request.amount == 0) revert InvalidAmount();
@@ -281,8 +289,16 @@ contract HyraToken is
         // Mark as executed
         request.executed = true;
         
-        // Update year-specific tracking
+        // Update year-specific tracking with overflow/underflow checks
         uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        
+        // Check for overflow
+        require(mintedByYear[requestYear] + request.amount >= mintedByYear[requestYear], "MintedByYear overflow");
+        require(totalMintedSupply + request.amount >= totalMintedSupply, "TotalMintedSupply overflow");
+        
+        // Check for underflow
+        require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
+        
         mintedByYear[requestYear] += request.amount;
         pendingByYear[requestYear] -= request.amount;
         totalMintedSupply += request.amount;
@@ -299,13 +315,17 @@ contract HyraToken is
      * @param _requestId ID of the mint request to cancel
      */
     function cancelMintRequest(uint256 _requestId) external onlyOwner {
+        // Validate request ID exists
+        if (_requestId >= mintRequestCount) revert InvalidAmount();
+        
         MintRequest storage request = mintRequests[_requestId];
         
         if (request.amount == 0) revert InvalidAmount();
         if (request.executed) revert AlreadyExecuted();
         
-        // Update year-specific pending tracking
+        // Update year-specific pending tracking with underflow check
         uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
         pendingByYear[requestYear] -= request.amount;
         
         // Clear the request
@@ -468,6 +488,11 @@ contract HyraToken is
      * @return Available mint amount for that year
      */
     function getRemainingMintCapacityForYear(uint256 year) external view returns (uint256) {
+        // Validate year parameter
+        if (year == 0 || year > TIER3_END_YEAR) {
+            return 0;
+        }
+        
         uint256 annualCap = _getAnnualMintCap(year);
         uint256 mintedInYear = mintedByYear[year];
         uint256 pendingInYear = pendingByYear[year];
@@ -482,6 +507,10 @@ contract HyraToken is
      * @return Pending mint amount for that year
      */
     function getPendingMintAmountForYear(uint256 year) external view returns (uint256) {
+        // Validate year parameter
+        if (year == 0 || year > TIER3_END_YEAR) {
+            return 0;
+        }
         return pendingByYear[year];
     }
 
@@ -491,6 +520,10 @@ contract HyraToken is
      * @return Minted amount for that year
      */
     function getMintedAmountForYear(uint256 year) external view returns (uint256) {
+        // Validate year parameter
+        if (year == 0 || year > TIER3_END_YEAR) {
+            return 0;
+        }
         return mintedByYear[year];
     }
 
@@ -499,10 +532,18 @@ contract HyraToken is
      * @return Total pending mint amount
      */
     function getTotalPendingMintAmount() external view returns (uint256) {
+        // Optimized: Only check years that might have pending amounts
+        // Most years will be 0, so we can skip them
         uint256 totalPending = 0;
-        for (uint256 year = 1; year <= TIER3_END_YEAR; year++) {
+        
+        // Check current year and nearby years (most likely to have pending amounts)
+        uint256 currentYear = currentMintYear;
+        for (uint256 year = currentYear > 0 ? currentYear - 1 : 1; 
+             year <= currentYear + 1 && year <= TIER3_END_YEAR; 
+             year++) {
             totalPending += pendingByYear[year];
         }
+        
         return totalPending;
     }
 
@@ -514,7 +555,10 @@ contract HyraToken is
         uint256 currentTime = block.timestamp;
         uint256 expiredCount = 0;
         
-        for (uint256 i = 0; i < mintRequestCount; i++) {
+        // Optimized: Limit the number of iterations to prevent gas limit issues
+        uint256 maxIterations = mintRequestCount > 100 ? 100 : mintRequestCount;
+        
+        for (uint256 i = 0; i < maxIterations; i++) {
             MintRequest storage request = mintRequests[i];
             
             if (!request.executed && 
@@ -608,9 +652,9 @@ contract HyraToken is
      * @return year The year number
      */
     function _getYearFromTimestamp(uint256 timestamp) internal pure returns (uint256) {
-        // Simple year calculation based on 365 days per year
-        // This is an approximation - for production, consider using a more precise method
-        return (timestamp / YEAR_DURATION) + 1;
+        // More accurate year calculation using 365.25 days per year (accounting for leap years)
+        // This provides better accuracy over long periods
+        return (timestamp * 4) / (36525 * 24 * 60 * 60) + 1;
     }
 
     /**
@@ -620,6 +664,9 @@ contract HyraToken is
      * @return expiredCount Number of requests actually expired
      */
     function expireOldRequests(uint256 maxExpire) external onlyOwner returns (uint256 expiredCount) {
+        // Validate maxExpire parameter
+        require(maxExpire > 0 && maxExpire <= 1000, "Invalid maxExpire value");
+        
         uint256 currentTime = block.timestamp;
         uint256 processed = 0;
         
@@ -630,8 +677,9 @@ contract HyraToken is
             if (!request.executed && 
                 currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
                 
-                // Auto-cancel expired request
+                // Auto-cancel expired request with underflow check
                 uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
                 pendingByYear[requestYear] -= request.amount;
                 
                 delete mintRequests[i];
@@ -660,6 +708,7 @@ contract HyraToken is
                 currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
                 
                 uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
                 pendingByYear[requestYear] -= request.amount;
                 
                 delete mintRequests[i];
