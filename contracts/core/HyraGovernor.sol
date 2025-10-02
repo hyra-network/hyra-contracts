@@ -344,6 +344,25 @@ contract HyraGovernor is
         // Use base quorum for general cases
         return super.quorum(timepoint);
     }
+
+    /**
+     * @notice Override _quorumReached to use proposal-specific quorum
+     * @param proposalId The proposal ID
+     * @return True if quorum is reached
+     */
+    function _quorumReached(uint256 proposalId) 
+        internal 
+        view 
+        override(GovernorCountingSimpleUpgradeable, GovernorUpgradeable) 
+        returns (bool) 
+    {
+        // Use proposal-specific quorum instead of base quorum
+        uint256 requiredQuorum = getProposalQuorum(proposalId);
+        (uint256 forVotes, uint256 againstVotes, uint256 abstainVotes) = proposalVotes(proposalId);
+        uint256 currentVotes = forVotes + abstainVotes;
+        
+        return currentVotes >= requiredQuorum;
+    }
     
     /**
      * @notice Override quorum calculation to use proposal-specific quorum
