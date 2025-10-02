@@ -80,6 +80,7 @@ contract HyraToken is
     event MintRequestExecuted(uint256 indexed requestId, address indexed recipient, uint256 amount);
     event MintRequestCancelled(uint256 indexed requestId);
     event MintRequestExpired(uint256 indexed requestId);
+    event ExpireOldRequestsCompleted(uint256 expiredCount, uint256 totalProcessed);
     event TokensMinted(address indexed to, uint256 amount, uint256 newTotalSupply);
     event MintYearReset(uint256 newYear, uint256 timestamp);
     event InitialDistribution(address indexed holder, uint256 amount, uint256 timestamp);
@@ -219,9 +220,6 @@ contract HyraToken is
         
         // Check if we need to reset annual mint tracking
         _checkAndResetMintYear();
-        
-        // Expire old requests to prevent accumulation
-        _expireOldRequests();
         
         // Check if minting period has ended (after year 25)
         if (currentMintYear > TIER3_END_YEAR) {
@@ -509,6 +507,26 @@ contract HyraToken is
     }
 
     /**
+     * @notice Get count of expired requests that need cleanup
+     * @return Number of expired requests
+     */
+    function getExpiredRequestsCount() external view returns (uint256) {
+        uint256 currentTime = block.timestamp;
+        uint256 expiredCount = 0;
+        
+        for (uint256 i = 0; i < mintRequestCount; i++) {
+            MintRequest storage request = mintRequests[i];
+            
+            if (!request.executed && 
+                currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+                expiredCount++;
+            }
+        }
+        
+        return expiredCount;
+    }
+
+    /**
      * @notice Get the current minting tier
      * @return tier Current tier (1, 2, 3, or 0 if ended)
      */
@@ -596,13 +614,16 @@ contract HyraToken is
     }
 
     /**
-     * @notice Expire old requests to prevent accumulation
-     * @dev Automatically cancels requests older than REQUEST_EXPIRY_PERIOD
+     * @notice Manually expire old requests to prevent accumulation
+     * @dev Cancels requests older than REQUEST_EXPIRY_PERIOD with batch limit
+     * @param maxExpire Maximum number of requests to expire in one call
+     * @return expiredCount Number of requests actually expired
      */
-    function _expireOldRequests() private {
+    function expireOldRequests(uint256 maxExpire) external onlyOwner returns (uint256 expiredCount) {
         uint256 currentTime = block.timestamp;
+        uint256 processed = 0;
         
-        for (uint256 i = 0; i < mintRequestCount; i++) {
+        for (uint256 i = 0; i < mintRequestCount && expiredCount < maxExpire; i++) {
             MintRequest storage request = mintRequests[i];
             
             // Check if request is not executed and has expired
@@ -615,8 +636,40 @@ contract HyraToken is
                 
                 delete mintRequests[i];
                 emit MintRequestExpired(i);
+                expiredCount++;
+            }
+            processed++;
+        }
+        
+        emit ExpireOldRequestsCompleted(expiredCount, processed);
+        return expiredCount;
+    }
+
+    /**
+     * @notice Expire all old requests (use with caution)
+     * @dev Expires all requests older than REQUEST_EXPIRY_PERIOD
+     * @return expiredCount Number of requests expired
+     */
+    function expireAllOldRequests() external onlyOwner returns (uint256 expiredCount) {
+        uint256 currentTime = block.timestamp;
+        
+        for (uint256 i = 0; i < mintRequestCount; i++) {
+            MintRequest storage request = mintRequests[i];
+            
+            if (!request.executed && 
+                currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+                
+                uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                pendingByYear[requestYear] -= request.amount;
+                
+                delete mintRequests[i];
+                emit MintRequestExpired(i);
+                expiredCount++;
             }
         }
+        
+        emit ExpireOldRequestsCompleted(expiredCount, mintRequestCount);
+        return expiredCount;
     }
 
     /**
