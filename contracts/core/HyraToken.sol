@@ -49,6 +49,7 @@ contract HyraToken is
     // Annual mint tracking
     uint256 public currentMintYear;
     uint256 public mintYearStartTime;
+    uint256 public originalMintYearStartTime; // Store original start time for accurate year calculation
     mapping(uint256 => uint256) public mintedByYear; // Track minted amount by year
     uint256 public pendingMintAmount; // Track pending mint requests
     
@@ -152,6 +153,7 @@ contract HyraToken is
         // Initialize mint year tracking
         currentMintYear = 1;
         mintYearStartTime = block.timestamp;
+        originalMintYearStartTime = block.timestamp; // Store original start time
     }
     
     /**
@@ -194,6 +196,7 @@ contract HyraToken is
         // Initialize mint year tracking
         currentMintYear = 1;
         mintYearStartTime = block.timestamp;
+        originalMintYearStartTime = block.timestamp; // Store original start time
     }
 
     // ============ Minting Functions ============
@@ -292,6 +295,9 @@ contract HyraToken is
         
         if (request.amount == 0) revert InvalidAmount();
         if (request.executed) revert AlreadyExecuted();
+        
+        // Subtract canceled amount from pending mint amount
+        pendingMintAmount -= request.amount;
         
         // Clear the request
         delete mintRequests[_requestId];
@@ -543,12 +549,12 @@ contract HyraToken is
      * @return year The year number based on contract's mintYearStartTime
      */
     function _calculateYearFromTimestamp(uint256 timestamp) internal view returns (uint256) {
-        if (timestamp < mintYearStartTime) {
+        if (timestamp < originalMintYearStartTime) {
             return 1; // Before contract start, assume year 1
         }
         
-        // Calculate which year the timestamp falls into based on mintYearStartTime
-        uint256 yearsPassed = (timestamp - mintYearStartTime) / YEAR_DURATION;
+        // Calculate which year the timestamp falls into based on original start time
+        uint256 yearsPassed = (timestamp - originalMintYearStartTime) / YEAR_DURATION;
         return 1 + yearsPassed; // Year 1 + years passed
     }
 }
