@@ -44,11 +44,11 @@ contract HyraGovernor is
     // DAO Role Manager for decentralized role management
     DAORoleManager public roleManager;
     
-    // Quorum percentages (basis points)
-    uint256 public constant STANDARD_QUORUM = 1000; // 10%
-    uint256 public constant EMERGENCY_QUORUM = 1500; // 15%
-    uint256 public constant CONSTITUTIONAL_QUORUM = 3000; // 30%
-    uint256 public constant UPGRADE_QUORUM = 2500; // 25%
+    // Quorum percentages (basis points) - Improved for better security
+    uint256 public constant STANDARD_QUORUM = 1500; // 15% (increased from 10%)
+    uint256 public constant EMERGENCY_QUORUM = 2000; // 20% (increased from 15%)
+    uint256 public constant CONSTITUTIONAL_QUORUM = 3500; // 35% (increased from 30%)
+    uint256 public constant UPGRADE_QUORUM = 3000; // 30% (increased from 25%)
     
     // Storage gap for upgradeability
     uint256[44] private __gap;

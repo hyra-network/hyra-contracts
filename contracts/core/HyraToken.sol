@@ -29,15 +29,17 @@ contract HyraToken is
     // ============ Constants ============
     uint256 public constant MAX_SUPPLY = 50_000_000_000e18; // 50 billion total cap
     
-    // Minting tiers (annual caps)
-    uint256 public constant TIER1_ANNUAL_CAP = 2_500_000_000e18; // 2.5B per year (5% of 50B)
-    uint256 public constant TIER2_ANNUAL_CAP = 1_500_000_000e18; // 1.5B per year (3% of 50B)
-    uint256 public constant TIER3_ANNUAL_CAP = 750_000_000e18;    // 750M per year (1.5% of 50B)
+    // Minting tiers (annual caps) - Improved for better token economics
+    uint256 public constant TIER1_ANNUAL_CAP = 2_000_000_000e18; // 2B per year (4% of 50B, reduced from 5%)
+    uint256 public constant TIER2_ANNUAL_CAP = 1_250_000_000e18; // 1.25B per year (2.5% of 50B, reduced from 3%)
+    uint256 public constant TIER3_ANNUAL_CAP = 750_000_000e18;   // 750M per year (1.5% of 50B, unchanged)
+    uint256 public constant TIER4_ANNUAL_CAP = 500_000_000e18;  // 500M per year (1% of 50B, new tier)
     
-    // Time periods 
+    // Time periods - Extended to 30 years for better long-term planning
     uint256 public constant TIER1_END_YEAR = 10;  // Year 1-10
     uint256 public constant TIER2_END_YEAR = 15;  // Year 11-15
     uint256 public constant TIER3_END_YEAR = 25;  // Year 16-25
+    uint256 public constant TIER4_END_YEAR = 30;  // Year 26-30 (new tier)
     uint256 public constant YEAR_DURATION = 365 days;
     
     // ============ State Variables ============
@@ -217,8 +219,8 @@ contract HyraToken is
         // Check if we need to reset annual mint tracking
         _checkAndResetMintYear();
         
-        // Check if minting period has ended (after year 25)
-        if (currentMintYear > TIER3_END_YEAR) {
+        // Check if minting period has ended (after year 30)
+        if (currentMintYear > TIER4_END_YEAR) {
             revert MintingPeriodEnded();
         }
         
@@ -318,19 +320,22 @@ contract HyraToken is
      * @return Annual mint cap for that year
      */
     function _getAnnualMintCap(uint256 year) private pure returns (uint256) {
-        if (year == 0 || year > TIER3_END_YEAR) {
+        if (year == 0 || year > TIER4_END_YEAR) {
             return 0; // No minting allowed
         }
         
         if (year <= TIER1_END_YEAR) {
-            // Year 1-10: 2.5B per year
+            // Year 1-10: 2B per year (reduced from 2.5B)
             return TIER1_ANNUAL_CAP;
         } else if (year <= TIER2_END_YEAR) {
-            // Year 11-15: 1.5B per year
+            // Year 11-15: 1.25B per year (reduced from 1.5B)
             return TIER2_ANNUAL_CAP;
-        } else {
-            // Year 16-25: 750M per year
+        } else if (year <= TIER3_END_YEAR) {
+            // Year 16-25: 750M per year (unchanged)
             return TIER3_ANNUAL_CAP;
+        } else {
+            // Year 26-30: 500M per year (new tier)
+            return TIER4_ANNUAL_CAP;
         }
     }
 
@@ -445,7 +450,7 @@ contract HyraToken is
             year += (block.timestamp - mintYearStartTime) / YEAR_DURATION;
         }
         
-        if (year > TIER3_END_YEAR) {
+        if (year > TIER4_END_YEAR) {
             return 0; // Minting period ended
         }
         
@@ -466,14 +471,16 @@ contract HyraToken is
             year += (block.timestamp - mintYearStartTime) / YEAR_DURATION;
         }
         
-        if (year == 0 || year > TIER3_END_YEAR) {
+        if (year == 0 || year > TIER4_END_YEAR) {
             return 0; // No tier (minting ended)
         } else if (year <= TIER1_END_YEAR) {
             return 1;
         } else if (year <= TIER2_END_YEAR) {
             return 2;
-        } else {
+        } else if (year <= TIER3_END_YEAR) {
             return 3;
+        } else {
+            return 4; // New tier 4 for years 26-30
         }
     }
 
