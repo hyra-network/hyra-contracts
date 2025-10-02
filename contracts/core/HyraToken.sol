@@ -48,7 +48,6 @@ contract HyraToken is
     
     // Annual mint tracking
     uint256 public currentMintYear;
-    uint256 public mintedThisYear;
     uint256 public mintYearStartTime;
     mapping(uint256 => uint256) public mintedByYear; // Track minted amount by year
     uint256 public pendingMintAmount; // Track pending mint requests
@@ -153,7 +152,6 @@ contract HyraToken is
         // Initialize mint year tracking
         currentMintYear = 1;
         mintYearStartTime = block.timestamp;
-        mintedThisYear = 0;
     }
     
     /**
@@ -196,7 +194,6 @@ contract HyraToken is
         // Initialize mint year tracking
         currentMintYear = 1;
         mintYearStartTime = block.timestamp;
-        mintedThisYear = 0;
     }
 
     // ============ Minting Functions ============
@@ -274,8 +271,6 @@ contract HyraToken is
         // Calculate the year based on the contract's year tracking system
         uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
         mintedByYear[requestYear] += request.amount;
-        // Remove mintedThisYear update to prevent cross-year attribution
-        // mintedThisYear should only track current year mints, not historical ones
         totalMintedSupply += request.amount;
         
         // Release reserved amount
@@ -343,8 +338,6 @@ contract HyraToken is
             
             currentMintYear += yearsPassed;
             mintYearStartTime += yearsPassed * YEAR_DURATION;
-            // Remove mintedThisYear reset since we now use mintedByYear for tracking
-            // mintedThisYear = 0; // Reset annual minted amount
             
             emit MintYearReset(currentMintYear, block.timestamp);
         }
