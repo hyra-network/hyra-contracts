@@ -51,7 +51,8 @@ contract HyraToken is
     uint256 public mintYearStartTime;
     uint256 public originalMintYearStartTime; // Store original start time for accurate year calculation
     mapping(uint256 => uint256) public mintedByYear; // Track minted amount by year
-    uint256 public pendingMintAmount; // Track pending mint requests
+    mapping(uint256 => uint256) public pendingByYear; // Track pending mint requests by year
+    uint256 public constant REQUEST_EXPIRY_PERIOD = 365 days; // 1 year expiry for requests
     
     // Mint requests (must be approved by DAO)
     struct MintRequest {
@@ -78,6 +79,7 @@ contract HyraToken is
     event MintRequestApproved(uint256 indexed requestId, uint256 executionTime);
     event MintRequestExecuted(uint256 indexed requestId, address indexed recipient, uint256 amount);
     event MintRequestCancelled(uint256 indexed requestId);
+    event MintRequestExpired(uint256 indexed requestId);
     event TokensMinted(address indexed to, uint256 amount, uint256 newTotalSupply);
     event MintYearReset(uint256 newYear, uint256 timestamp);
     event InitialDistribution(address indexed holder, uint256 amount, uint256 timestamp);
@@ -96,6 +98,7 @@ contract HyraToken is
     error AlreadyExecuted();
     error MintDelayNotMet();
     error DirectMintDisabled();
+    error RequestExpired();
 
     // ============ Modifiers ============
     modifier onlyMinter() {
@@ -217,23 +220,28 @@ contract HyraToken is
         // Check if we need to reset annual mint tracking
         _checkAndResetMintYear();
         
+        // Expire old requests to prevent accumulation
+        _expireOldRequests();
+        
         // Check if minting period has ended (after year 25)
         if (currentMintYear > TIER3_END_YEAR) {
             revert MintingPeriodEnded();
         }
         
-        // Get annual cap for current year
+        // Year-specific validation
         uint256 annualCap = _getAnnualMintCap(currentMintYear);
         uint256 mintedInCurrentYear = mintedByYear[currentMintYear];
-        uint256 remainingMintCapacity = annualCap > (mintedInCurrentYear + pendingMintAmount) ? 
-            annualCap - (mintedInCurrentYear + pendingMintAmount) : 0;
+        uint256 pendingInCurrentYear = pendingByYear[currentMintYear];
+        
+        uint256 remainingMintCapacity = annualCap > (mintedInCurrentYear + pendingInCurrentYear) ? 
+            annualCap - (mintedInCurrentYear + pendingInCurrentYear) : 0;
         
         if (_amount > remainingMintCapacity) {
             revert ExceedsAnnualMintCap(_amount, remainingMintCapacity);
         }
         
-        // Reserve the mint amount
-        pendingMintAmount += _amount;
+        // Reserve the mint amount for current year
+        pendingByYear[currentMintYear] += _amount;
         
         // Check total supply cap
         if (totalSupply() + _amount > MAX_SUPPLY) {
@@ -267,17 +275,19 @@ contract HyraToken is
             revert MintDelayNotMet();
         }
         
+        // Check if request has expired
+        if (block.timestamp > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+            revert RequestExpired();
+        }
+        
         // Mark as executed
         request.executed = true;
         
-        // Update tracking - use the year when request was created, not current year
-        // Calculate the year based on the contract's year tracking system
+        // Update year-specific tracking
         uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
         mintedByYear[requestYear] += request.amount;
+        pendingByYear[requestYear] -= request.amount;
         totalMintedSupply += request.amount;
-        
-        // Release reserved amount
-        pendingMintAmount -= request.amount;
         
         // Mint tokens
         _mint(request.recipient, request.amount);
@@ -296,8 +306,9 @@ contract HyraToken is
         if (request.amount == 0) revert InvalidAmount();
         if (request.executed) revert AlreadyExecuted();
         
-        // Subtract canceled amount from pending mint amount
-        pendingMintAmount -= request.amount;
+        // Update year-specific pending tracking
+        uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        pendingByYear[requestYear] -= request.amount;
         
         // Clear the request
         delete mintRequests[_requestId];
@@ -449,11 +460,52 @@ contract HyraToken is
             return 0; // Minting period ended
         }
         
+        // Use year-specific logic
+        return this.getRemainingMintCapacityForYear(year);
+    }
+
+    /**
+     * @notice Get remaining mint capacity for a specific year
+     * @param year The year number
+     * @return Available mint amount for that year
+     */
+    function getRemainingMintCapacityForYear(uint256 year) external view returns (uint256) {
         uint256 annualCap = _getAnnualMintCap(year);
-        
-        // Use mintedByYear to get accurate minted amount for the calculated year
         uint256 mintedInYear = mintedByYear[year];
-        return annualCap > mintedInYear ? annualCap - mintedInYear : 0;
+        uint256 pendingInYear = pendingByYear[year];
+        
+        return annualCap > (mintedInYear + pendingInYear) ? 
+            annualCap - (mintedInYear + pendingInYear) : 0;
+    }
+
+    /**
+     * @notice Get pending mint amount for a specific year
+     * @param year The year number
+     * @return Pending mint amount for that year
+     */
+    function getPendingMintAmountForYear(uint256 year) external view returns (uint256) {
+        return pendingByYear[year];
+    }
+
+    /**
+     * @notice Get minted amount for a specific year
+     * @param year The year number
+     * @return Minted amount for that year
+     */
+    function getMintedAmountForYear(uint256 year) external view returns (uint256) {
+        return mintedByYear[year];
+    }
+
+    /**
+     * @notice Get total pending mint amount across all years
+     * @return Total pending mint amount
+     */
+    function getTotalPendingMintAmount() external view returns (uint256) {
+        uint256 totalPending = 0;
+        for (uint256 year = 1; year <= TIER3_END_YEAR; year++) {
+            totalPending += pendingByYear[year];
+        }
+        return totalPending;
     }
 
     /**
@@ -541,6 +593,30 @@ contract HyraToken is
         // Simple year calculation based on 365 days per year
         // This is an approximation - for production, consider using a more precise method
         return (timestamp / YEAR_DURATION) + 1;
+    }
+
+    /**
+     * @notice Expire old requests to prevent accumulation
+     * @dev Automatically cancels requests older than REQUEST_EXPIRY_PERIOD
+     */
+    function _expireOldRequests() private {
+        uint256 currentTime = block.timestamp;
+        
+        for (uint256 i = 0; i < mintRequestCount; i++) {
+            MintRequest storage request = mintRequests[i];
+            
+            // Check if request is not executed and has expired
+            if (!request.executed && 
+                currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+                
+                // Auto-cancel expired request
+                uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                pendingByYear[requestYear] -= request.amount;
+                
+                delete mintRequests[i];
+                emit MintRequestExpired(i);
+            }
+        }
     }
 
     /**
