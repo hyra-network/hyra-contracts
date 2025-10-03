@@ -105,6 +105,8 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
      * @param _executorManager Address of the Secure Executor Manager
      */
     function setExecutorManager(SecureExecutorManager _executorManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // FIXED: Add zero address validation
+        if (address(_executorManager) == address(0)) revert InvalidProxyAdmin();
         executorManager = _executorManager;
     }
     
@@ -113,6 +115,8 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
      * @param _proxyAdminValidator Address of the Proxy Admin Validator
      */
     function setProxyAdminValidator(ProxyAdminValidator _proxyAdminValidator) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // FIXED: Add zero address validation
+        if (address(_proxyAdminValidator) == address(0)) revert InvalidProxyAdmin();
         proxyAdminValidator = _proxyAdminValidator;
     }
 
@@ -222,7 +226,13 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
             );
         }
         
-        // Execute upgrade through ProxyAdmin
+        // FIXED: Apply Checks-Effects-Interactions pattern
+        // 1. Update state first (Effects)
+        executedUpgrades[upgradeId] = true;
+        delete pendingUpgrades[proxy];
+        delete pendingImplementations[proxy];
+        
+        // 2. Then make external calls (Interactions)
         (bool success, bytes memory returnData) = proxyAdmin.call(
             abi.encodeWithSignature(
                 "upgradeAndCall(address,address,bytes)",
@@ -233,6 +243,11 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
         );
         
         if (!success) {
+            // Revert state changes if external call failed
+            executedUpgrades[upgradeId] = false;
+            pendingUpgrades[proxy] = block.timestamp + 48 hours; // Restore original value
+            pendingImplementations[proxy] = newImplementation;
+            
             if (returnData.length > 0) {
                 assembly {
                     let returnData_size := mload(returnData)
@@ -242,10 +257,6 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
                 revert ExecutionFailed("Upgrade execution failed");
             }
         }
-        
-        executedUpgrades[upgradeId] = true;
-        delete pendingUpgrades[proxy];
-        delete pendingImplementations[proxy];
         
         emit UpgradeExecuted(proxy, newImplementation, upgradeId);
     }
@@ -289,7 +300,13 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
             );
         }
         
-        // Execute upgrade with call through ProxyAdmin
+        // FIXED: Apply Checks-Effects-Interactions pattern
+        // 1. Update state first (Effects)
+        executedUpgrades[upgradeId] = true;
+        delete pendingUpgrades[proxy];
+        delete pendingImplementations[proxy];
+        
+        // 2. Then make external calls (Interactions)
         (bool success, bytes memory returnData) = proxyAdmin.call(
             abi.encodeWithSignature(
                 "upgradeAndCall(address,address,bytes)",
@@ -300,6 +317,11 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
         );
         
         if (!success) {
+            // Revert state changes if external call failed
+            executedUpgrades[upgradeId] = false;
+            pendingUpgrades[proxy] = block.timestamp + 48 hours; // Restore original value
+            pendingImplementations[proxy] = newImplementation;
+            
             if (returnData.length > 0) {
                 assembly {
                     let returnData_size := mload(returnData)
@@ -309,10 +331,6 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
                 revert ExecutionFailed("Upgrade with call execution failed");
             }
         }
-        
-        executedUpgrades[upgradeId] = true;
-        delete pendingUpgrades[proxy];
-        delete pendingImplementations[proxy];
         
         emit UpgradeExecuted(proxy, newImplementation, upgradeId);
     }

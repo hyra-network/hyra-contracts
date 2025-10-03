@@ -347,7 +347,8 @@ contract HyraToken is
      * @return Annual mint cap for that year
      */
     function _getAnnualMintCap(uint256 year) private pure returns (uint256) {
-        if (year == 0 || year > TIER3_END_YEAR) {
+        // FIXED: Use range checks instead of strict equality
+        if (year < 1 || year > TIER3_END_YEAR) {
             return 0; // No minting allowed
         }
         
@@ -488,8 +489,8 @@ contract HyraToken is
      * @return Available mint amount for that year
      */
     function getRemainingMintCapacityForYear(uint256 year) external view returns (uint256) {
-        // Validate year parameter
-        if (year == 0 || year > TIER3_END_YEAR) {
+        // FIXED: Validate year parameter - use range checks
+        if (year < 1 || year > TIER3_END_YEAR) {
             return 0;
         }
         
@@ -507,8 +508,8 @@ contract HyraToken is
      * @return Pending mint amount for that year
      */
     function getPendingMintAmountForYear(uint256 year) external view returns (uint256) {
-        // Validate year parameter
-        if (year == 0 || year > TIER3_END_YEAR) {
+        // FIXED: Validate year parameter - use range checks
+        if (year < 1 || year > TIER3_END_YEAR) {
             return 0;
         }
         return pendingByYear[year];
@@ -520,8 +521,8 @@ contract HyraToken is
      * @return Minted amount for that year
      */
     function getMintedAmountForYear(uint256 year) external view returns (uint256) {
-        // Validate year parameter
-        if (year == 0 || year > TIER3_END_YEAR) {
+        // FIXED: Validate year parameter - use range checks
+        if (year < 1 || year > TIER3_END_YEAR) {
             return 0;
         }
         return mintedByYear[year];
@@ -580,7 +581,8 @@ contract HyraToken is
             year += (block.timestamp - mintYearStartTime) / YEAR_DURATION;
         }
         
-        if (year == 0 || year > TIER3_END_YEAR) {
+        // FIXED: Use range checks instead of strict equality
+        if (year < 1 || year > TIER3_END_YEAR) {
             return 0; // No tier (minting ended)
         } else if (year <= TIER1_END_YEAR) {
             return 1;

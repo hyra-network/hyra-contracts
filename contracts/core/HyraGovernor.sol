@@ -103,6 +103,9 @@ contract HyraGovernor is
         uint256 _proposalThreshold,
         uint256 _quorumPercentage
     ) public initializer {
+        // FIXED: Add zero address validation
+        if (address(_token) == address(0)) revert ZeroAddress();
+        if (address(_timelock) == address(0)) revert ZeroAddress();
         __Governor_init("HyraGovernor");
         __GovernorSettings_init(uint48(_votingDelay), uint32(_votingPeriod), _proposalThreshold);
         __GovernorCountingSimple_init();
@@ -185,18 +188,19 @@ contract HyraGovernor is
             revert UnauthorizedCancellation();
         }
         
-        // For security council members, bypass parent authorization
+        // FIXED: Apply Checks-Effects-Interactions pattern
+        // 1. Update state first (Effects)
+        proposalCancelled[proposalId] = true;
+        emit ProposalCancelled(proposalId);
+        
+        // 2. Then make external calls (Interactions)
         if (securityCouncilMembers[msg.sender]) {
             // Directly call internal _cancel function
             _cancel(targets, values, calldatas, descriptionHash);
-            proposalCancelled[proposalId] = true;
-            emit ProposalCancelled(proposalId);
             return proposalId;
         } else {
             // For proposers, use parent function
             uint256 result = super.cancel(targets, values, calldatas, descriptionHash);
-            proposalCancelled[proposalId] = true;
-            emit ProposalCancelled(proposalId);
             return result;
         }
     }
@@ -208,6 +212,8 @@ contract HyraGovernor is
      * @param _roleManager Address of the DAO Role Manager
      */
     function setRoleManager(DAORoleManager _roleManager) external onlyGovernance {
+        // FIXED: Add zero address validation
+        if (address(_roleManager) == address(0)) revert ZeroAddress();
         roleManager = _roleManager;
     }
 

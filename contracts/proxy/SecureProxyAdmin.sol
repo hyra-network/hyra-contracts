@@ -259,15 +259,17 @@ contract SecureProxyAdmin is ProxyAdmin, AccessControl {
             revert InsufficientSignatures();
         }
         
-        // Execute upgrade
+        // FIXED: Apply Checks-Effects-Interactions pattern
+        // 1. Update state first (Effects)
+        executedUpgrades[upgradeId] = true;
+        delete pendingUpgrades[proxy];
+        
+        // 2. Then make external calls (Interactions)
         upgradeAndCall(
             ITransparentUpgradeableProxy(payable(proxy)),
             upgrade.implementation,
             bytes("")
         );
-        
-        executedUpgrades[upgradeId] = true;
-        delete pendingUpgrades[proxy];
         
         emit UpgradeExecuted(proxy, upgrade.implementation, upgradeId);
     }

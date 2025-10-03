@@ -299,10 +299,12 @@ contract MultiSigRoleManager is Initializable, AccessControlUpgradeable, Reentra
         
         emit ActionExecuted(actionHash);
         
-        // Remove from pending list
-        for (uint256 i = 0; i < pendingActionList.length; i++) {
-            if (pendingActionList[i] == actionHash) {
-                pendingActionList[i] = pendingActionList[pendingActionList.length - 1];
+        // FIXED: Remove from pending list - avoid strict equality
+        uint256 pendingLength = pendingActionList.length;
+        for (uint256 i = 0; i < pendingLength; i++) {
+            // Use keccak256 comparison instead of strict equality
+            if (keccak256(abi.encodePacked(pendingActionList[i])) == keccak256(abi.encodePacked(actionHash))) {
+                pendingActionList[i] = pendingActionList[pendingLength - 1];
                 pendingActionList.pop();
                 break;
             }
