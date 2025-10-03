@@ -15,10 +15,6 @@ import "@openzeppelin/contracts/utils/Address.sol";
  */
 contract HyraTransparentUpgradeableProxy is ERC1967Proxy {
     
-    /**
-     * @dev Emitted when the admin account has changed.
-     */
-    event AdminChanged(address previousAdmin, address newAdmin);
 
     /**
      * @dev Throws if called by any account other than the admin.
@@ -73,7 +69,7 @@ contract HyraTransparentUpgradeableProxy is ERC1967Proxy {
      * Emits an {AdminChanged} event.
      */
     function _changeAdmin(address newAdmin) internal virtual {
-        emit AdminChanged(_getAdmin(), newAdmin);
+        emit IERC1967.AdminChanged(_getAdmin(), newAdmin);
         _setAdmin(newAdmin);
     }
 

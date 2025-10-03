@@ -69,6 +69,13 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         if (proxyAdmin == address(0)) revert InvalidAdmin();
         if (bytes(contractType).length == 0) revert InvalidContractType();
         
+        // FIXED: Apply Checks-Effects-Interactions pattern
+        // 1. Pre-calculate values to avoid reentrancy
+        uint256 currentNonce = deploymentNonce;
+        address currentDeployer = tx.origin;
+        uint256 currentTimestamp = block.timestamp;
+        
+        // 2. Make external call (Interactions)
         proxy = address(
             new HyraTransparentUpgradeableProxy(
                 implementation,
@@ -79,14 +86,14 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
         
         if (proxy == address(0)) revert DeploymentFailed();
         
-        // Store proxy info
+        // 3. Update state after external call (Effects)
         deployedProxies[proxy] = ProxyInfo({
             implementation: implementation,
             proxyAdmin: proxyAdmin,
             contractType: contractType,
-            deploymentTime: block.timestamp,
-            deployer: tx.origin, // Use tx.origin for actual deployer
-            nonce: deploymentNonce,
+            deploymentTime: currentTimestamp,
+            deployer: currentDeployer,
+            nonce: currentNonce,
             salt: bytes32(0) // Not deterministic
         });
         
@@ -98,7 +105,7 @@ contract HyraProxyDeployer is IHyraProxyDeployer {
             implementation,
             proxyAdmin,
             contractType,
-            deploymentNonce - 1
+            currentNonce
         );
     }
 

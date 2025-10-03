@@ -169,31 +169,39 @@ describe("Simple DAO Testing", function () {
       const calldatas = [token.interface.encodeFunctionData("pause", [])];
       
       // Standard proposal
-      await governor.proposeWithType(targets, values, calldatas, "Standard", ProposalType.STANDARD);
-      const standardQuorum = await governor.getProposalQuorum(1);
+      const standardProposalId = await governor.proposeWithType(targets, values, calldatas, "Standard", 0); // ProposalType.STANDARD
+      const standardQuorum = await governor.getProposalQuorum(standardProposalId);
       
       // Constitutional proposal
-      await governor.proposeWithType(targets, values, calldatas, "Constitutional", ProposalType.CONSTITUTIONAL);
-      const constitutionalQuorum = await governor.getProposalQuorum(2);
+      const constitutionalProposalId = await governor.proposeWithType(targets, values, calldatas, "Constitutional", 2); // ProposalType.CONSTITUTIONAL
+      const constitutionalQuorum = await governor.getProposalQuorum(constitutionalProposalId);
       
       // Upgrade proposal
-      await governor.proposeWithType(targets, values, calldatas, "Upgrade", ProposalType.UPGRADE);
-      const upgradeQuorum = await governor.getProposalQuorum(3);
+      const upgradeProposalId = await governor.proposeWithType(targets, values, calldatas, "Upgrade", 3); // ProposalType.UPGRADE
+      const upgradeQuorum = await governor.getProposalQuorum(upgradeProposalId);
       
       // Verify quorum hierarchy (quorum values should be >= 0, some might be 0 if no total supply)
       expect(constitutionalQuorum).to.be.gte(0);
       expect(upgradeQuorum).to.be.gte(0);
       expect(standardQuorum).to.be.gte(0);
       
-      // Verify hierarchy (if all > 0)
+      // Verify hierarchy (if all > 0): STANDARD < UPGRADE < CONSTITUTIONAL
       if (constitutionalQuorum > 0 && upgradeQuorum > 0 && standardQuorum > 0) {
         expect(constitutionalQuorum).to.be.gt(upgradeQuorum);
         expect(upgradeQuorum).to.be.gt(standardQuorum);
       }
+      
+      // Test quorum hierarchy validation function
+      expect(await governor.validateQuorumHierarchy()).to.be.true;
+      
+      // Test getQuorumPercentage function
+      expect(await governor.getQuorumPercentage(0)).to.eq(1000); // 10% - STANDARD
+      expect(await governor.getQuorumPercentage(3)).to.eq(2500); // 25% - UPGRADE
+      expect(await governor.getQuorumPercentage(2)).to.eq(3000); // 30% - CONSTITUTIONAL
     });
 
     it("should handle error cases", async function () {
-      const { token, alice } = await loadFixture(deployCore);
+      const { token, alice, governor } = await loadFixture(deployCore);
       
       // Test unauthorized pause
       await expect(
@@ -204,6 +212,11 @@ describe("Simple DAO Testing", function () {
       await expect(
         token.connect(alice).mint(alice.getAddress(), ethers.utils.parseEther("1000"))
       ).to.be.revertedWithCustomError(token, "DirectMintDisabled");
+      
+      // Test getProposalQuorum with non-existent proposal
+      await expect(
+        governor.getProposalQuorum(999)
+      ).to.be.revertedWithCustomError(governor, "ProposalNotFound");
     });
 
     it("should handle complete DAO workflow", async function () {

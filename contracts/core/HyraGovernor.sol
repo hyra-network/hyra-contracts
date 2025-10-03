@@ -45,10 +45,14 @@ contract HyraGovernor is
     DAORoleManager public roleManager;
     
     // Quorum percentages (basis points)
-    uint256 public constant STANDARD_QUORUM = 1000; // 10%
-    uint256 public constant EMERGENCY_QUORUM = 1500; // 15%
-    uint256 public constant CONSTITUTIONAL_QUORUM = 3000; // 30%
-    uint256 public constant UPGRADE_QUORUM = 2500; // 25%
+    // Hierarchy: STANDARD < EMERGENCY < UPGRADE < CONSTITUTIONAL
+    uint256 public constant STANDARD_QUORUM = 1000; // 10% - Regular proposals
+    uint256 public constant EMERGENCY_QUORUM = 2000; // 20% - Emergency proposals (increased for security)
+    uint256 public constant UPGRADE_QUORUM = 2500; // 25% - Contract upgrades
+    uint256 public constant CONSTITUTIONAL_QUORUM = 3000; // 30% - Constitutional changes
+    
+    // Minimum quorum to prevent governance attacks
+    uint256 public constant MINIMUM_QUORUM = 100; // 1% minimum
     
     // Storage gap for upgradeability
     uint256[44] private __gap;
@@ -99,6 +103,9 @@ contract HyraGovernor is
         uint256 _proposalThreshold,
         uint256 _quorumPercentage
     ) public initializer {
+        // FIXED: Add zero address validation
+        if (address(_token) == address(0)) revert ZeroAddress();
+        if (address(_timelock) == address(0)) revert ZeroAddress();
         __Governor_init("HyraGovernor");
         __GovernorSettings_init(uint48(_votingDelay), uint32(_votingPeriod), _proposalThreshold);
         __GovernorCountingSimple_init();
@@ -181,18 +188,19 @@ contract HyraGovernor is
             revert UnauthorizedCancellation();
         }
         
-        // For security council members, bypass parent authorization
+        // FIXED: Apply Checks-Effects-Interactions pattern
+        // 1. Update state first (Effects)
+        proposalCancelled[proposalId] = true;
+        emit ProposalCancelled(proposalId);
+        
+        // 2. Then make external calls (Interactions)
         if (securityCouncilMembers[msg.sender]) {
             // Directly call internal _cancel function
             _cancel(targets, values, calldatas, descriptionHash);
-            proposalCancelled[proposalId] = true;
-            emit ProposalCancelled(proposalId);
             return proposalId;
         } else {
             // For proposers, use parent function
             uint256 result = super.cancel(targets, values, calldatas, descriptionHash);
-            proposalCancelled[proposalId] = true;
-            emit ProposalCancelled(proposalId);
             return result;
         }
     }
@@ -204,6 +212,8 @@ contract HyraGovernor is
      * @param _roleManager Address of the DAO Role Manager
      */
     function setRoleManager(DAORoleManager _roleManager) external onlyGovernance {
+        // FIXED: Add zero address validation
+        if (address(_roleManager) == address(0)) revert ZeroAddress();
         roleManager = _roleManager;
     }
 
@@ -302,24 +312,45 @@ contract HyraGovernor is
 
     /**
      * @notice Get custom quorum for a proposal based on its type
+     * @param proposalId The proposal ID
+     * @return The required quorum for this proposal
      */
     function getProposalQuorum(uint256 proposalId) 
         public 
         view 
         returns (uint256) 
     {
-        ProposalType pType = proposalTypes[proposalId];
-        uint256 supply = token().getPastTotalSupply(proposalSnapshot(proposalId));
-        
-        if (pType == ProposalType.EMERGENCY) {
-            return (supply * EMERGENCY_QUORUM) / 10000;
-        } else if (pType == ProposalType.CONSTITUTIONAL) {
-            return (supply * CONSTITUTIONAL_QUORUM) / 10000;
-        } else if (pType == ProposalType.UPGRADE) {
-            return (supply * UPGRADE_QUORUM) / 10000;
-        } else {
-            return (supply * STANDARD_QUORUM) / 10000;
+        // Validate proposal exists
+        uint256 snapshot = proposalSnapshot(proposalId);
+        if (snapshot == 0) {
+            revert ProposalNotFound();
         }
+        
+        ProposalType pType = proposalTypes[proposalId];
+        uint256 supply = token().getPastTotalSupply(snapshot);
+        
+        // Prevent division by zero and ensure minimum quorum
+        if (supply == 0) {
+            return 0;
+        }
+        
+        uint256 quorumPercentage;
+        if (pType == ProposalType.EMERGENCY) {
+            quorumPercentage = EMERGENCY_QUORUM;
+        } else if (pType == ProposalType.CONSTITUTIONAL) {
+            quorumPercentage = CONSTITUTIONAL_QUORUM;
+        } else if (pType == ProposalType.UPGRADE) {
+            quorumPercentage = UPGRADE_QUORUM;
+        } else {
+            quorumPercentage = STANDARD_QUORUM;
+        }
+        
+        uint256 calculatedQuorum = (supply * quorumPercentage) / 10000;
+        
+        // Apply minimum quorum protection
+        uint256 minimumQuorum = (supply * MINIMUM_QUORUM) / 10000;
+        
+        return calculatedQuorum > minimumQuorum ? calculatedQuorum : minimumQuorum;
     }
 
     /**
@@ -333,25 +364,82 @@ contract HyraGovernor is
         return securityCouncilMembers[_account];
     }
 
+    /**
+     * @notice Get quorum percentage for a proposal type
+     * @param proposalType The type of proposal
+     * @return The quorum percentage in basis points
+     */
+    function getQuorumPercentage(ProposalType proposalType) 
+        external 
+        pure 
+        returns (uint256) 
+    {
+        if (proposalType == ProposalType.EMERGENCY) {
+            return EMERGENCY_QUORUM;
+        } else if (proposalType == ProposalType.CONSTITUTIONAL) {
+            return CONSTITUTIONAL_QUORUM;
+        } else if (proposalType == ProposalType.UPGRADE) {
+            return UPGRADE_QUORUM;
+        } else {
+            return STANDARD_QUORUM;
+        }
+    }
+
+    /**
+     * @notice Validate quorum hierarchy (for testing/debugging)
+     * @return True if quorum hierarchy is correct
+     */
+    function validateQuorumHierarchy() external pure returns (bool) {
+        return STANDARD_QUORUM < EMERGENCY_QUORUM && 
+               EMERGENCY_QUORUM < UPGRADE_QUORUM && 
+               UPGRADE_QUORUM < CONSTITUTIONAL_QUORUM &&
+               MINIMUM_QUORUM < STANDARD_QUORUM;
+    }
+
     // ============ Overrides Required for OpenZeppelin v5 ============
 
-    function quorum(uint256 timepoint) 
+    function quorum(uint256 /* timepoint */) 
         public 
         view 
         override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable, IGovernor) 
         returns (uint256) 
     {
         // Use base quorum for general cases
-        return super.quorum(timepoint);
+        return super.quorum(block.number);
+    }
+
+    /**
+     * @notice Override _quorumReached to use proposal-specific quorum
+     * @param proposalId The proposal ID
+     * @return True if quorum is reached
+     */
+    function _quorumReached(uint256 proposalId) 
+        internal 
+        view 
+        override(GovernorCountingSimpleUpgradeable, GovernorUpgradeable) 
+        returns (bool) 
+    {
+        // Get proposal-specific quorum
+        uint256 requiredQuorum = getProposalQuorum(proposalId);
+        
+        // If no quorum required (edge case), return true
+        if (requiredQuorum == 0) {
+            return true;
+        }
+        
+        // Get current votes (for + abstain votes count toward quorum)
+        (uint256 forVotes, , uint256 abstainVotes) = proposalVotes(proposalId);
+        uint256 currentVotes = forVotes + abstainVotes;
+        
+        return currentVotes >= requiredQuorum;
     }
     
     /**
      * @notice Override quorum calculation to use proposal-specific quorum
      * @param proposalId The proposal ID
-     * @param timepoint The timepoint
      * @return The required quorum for this specific proposal
      */
-    function quorum(uint256 proposalId, uint256 timepoint) 
+    function quorum(uint256 proposalId, uint256 /* timepoint */) 
         public 
         view 
         returns (uint256) 

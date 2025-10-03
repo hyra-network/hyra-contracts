@@ -137,23 +137,33 @@ describe("Comprehensive DAO Testing", function () {
       const calldatas = [token.interface.encodeFunctionData("pause", [])];
       
       // Mock proposal types
-      await governor.proposeWithType(targets, values, calldatas, "test standard", ProposalType.STANDARD);
-      await governor.connect(alice).proposeWithType(targets, values, calldatas, "test emergency", ProposalType.EMERGENCY);
-      await governor.proposeWithType(targets, values, calldatas, "test constitutional", ProposalType.CONSTITUTIONAL);
-      await governor.proposeWithType(targets, values, calldatas, "test upgrade", ProposalType.UPGRADE);
+      const standardProposalId = await governor.proposeWithType(targets, values, calldatas, "test standard", 0); // ProposalType.STANDARD
+      const emergencyProposalId = await governor.connect(alice).proposeWithType(targets, values, calldatas, "test emergency", 1); // ProposalType.EMERGENCY
+      const constitutionalProposalId = await governor.proposeWithType(targets, values, calldatas, "test constitutional", 2); // ProposalType.CONSTITUTIONAL
+      const upgradeProposalId = await governor.proposeWithType(targets, values, calldatas, "test upgrade", 3); // ProposalType.UPGRADE
       
       // Check quorum calculations
-      const standardQuorum = await governor.getProposalQuorum(1);
-      const emergencyQuorum = await governor.getProposalQuorum(2);
-      const constitutionalQuorum = await governor.getProposalQuorum(3);
-      const upgradeQuorum = await governor.getProposalQuorum(4);
+      const standardQuorum = await governor.getProposalQuorum(standardProposalId);
+      const emergencyQuorum = await governor.getProposalQuorum(emergencyProposalId);
+      const constitutionalQuorum = await governor.getProposalQuorum(constitutionalProposalId);
+      const upgradeQuorum = await governor.getProposalQuorum(upgradeProposalId);
       
       // Check quorum hierarchy if quorums are positive
+      // New hierarchy: STANDARD < EMERGENCY < UPGRADE < CONSTITUTIONAL
       if (standardQuorum > 0) {
         expect(emergencyQuorum).to.be.gte(standardQuorum);
-        expect(constitutionalQuorum).to.be.gte(emergencyQuorum);
-        expect(upgradeQuorum).to.be.gte(standardQuorum);
+        expect(upgradeQuorum).to.be.gte(emergencyQuorum);
+        expect(constitutionalQuorum).to.be.gte(upgradeQuorum);
       }
+      
+      // Test validation functions
+      expect(await governor.validateQuorumHierarchy()).to.be.true;
+      
+      // Test getQuorumPercentage for all types
+      expect(await governor.getQuorumPercentage(0)).to.eq(1000); // 10% - STANDARD
+      expect(await governor.getQuorumPercentage(1)).to.eq(2000); // 20% - EMERGENCY
+      expect(await governor.getQuorumPercentage(3)).to.eq(2500); // 25% - UPGRADE
+      expect(await governor.getQuorumPercentage(2)).to.eq(3000); // 30% - CONSTITUTIONAL
     });
 
     it("should handle security council functionality", async function () {

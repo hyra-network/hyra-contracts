@@ -82,6 +82,9 @@ contract MockMultiSigWallet is AccessControlUpgradeable {
         
         requiredSignatures = _requiredSignatures;
         
+        // FIXED: Add event for required signatures
+        emit RequiredSignaturesUpdated(0, _requiredSignatures);
+        
         // Add signers
         for (uint256 i = 0; i < _signers.length; i++) {
             if (_signers[i] == address(0)) revert InvalidSigner();

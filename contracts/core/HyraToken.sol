@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUp
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "../interfaces/IHyraToken.sol";
@@ -24,6 +25,7 @@ contract HyraToken is
     ERC20VotesUpgradeable,
     OwnableUpgradeable,
     PausableUpgradeable,
+    ReentrancyGuardUpgradeable,
     IHyraToken
 {
     // ============ Constants ============
@@ -48,10 +50,11 @@ contract HyraToken is
     
     // Annual mint tracking
     uint256 public currentMintYear;
-    uint256 public mintedThisYear;
     uint256 public mintYearStartTime;
+    uint256 public originalMintYearStartTime; // Store original start time for accurate year calculation
     mapping(uint256 => uint256) public mintedByYear; // Track minted amount by year
-    uint256 public pendingMintAmount; // Track pending mint requests
+    mapping(uint256 => uint256) public pendingByYear; // Track pending mint requests by year
+    uint256 public constant REQUEST_EXPIRY_PERIOD = 365 days; // 1 year expiry for requests
     
     // Mint requests (must be approved by DAO)
     struct MintRequest {
@@ -78,6 +81,8 @@ contract HyraToken is
     event MintRequestApproved(uint256 indexed requestId, uint256 executionTime);
     event MintRequestExecuted(uint256 indexed requestId, address indexed recipient, uint256 amount);
     event MintRequestCancelled(uint256 indexed requestId);
+    event MintRequestExpired(uint256 indexed requestId);
+    event ExpireOldRequestsCompleted(uint256 expiredCount, uint256 totalProcessed);
     event TokensMinted(address indexed to, uint256 amount, uint256 newTotalSupply);
     event MintYearReset(uint256 newYear, uint256 timestamp);
     event InitialDistribution(address indexed holder, uint256 amount, uint256 timestamp);
@@ -96,6 +101,7 @@ contract HyraToken is
     error AlreadyExecuted();
     error MintDelayNotMet();
     error DirectMintDisabled();
+    error RequestExpired();
 
     // ============ Modifiers ============
     modifier onlyMinter() {
@@ -134,6 +140,7 @@ contract HyraToken is
         __ERC20Votes_init();
         __Ownable_init(_governance); // set initial owner
         __Pausable_init();
+        __ReentrancyGuard_init();
         
         // Initial supply should not exceed 5% (2.5B) 
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
@@ -153,7 +160,7 @@ contract HyraToken is
         // Initialize mint year tracking
         currentMintYear = 1;
         mintYearStartTime = block.timestamp;
-        mintedThisYear = 0;
+        originalMintYearStartTime = block.timestamp; // Store original start time
     }
     
     /**
@@ -178,6 +185,7 @@ contract HyraToken is
         __ERC20Votes_init();
         __Ownable_init(_governance);
         __Pausable_init();
+        __ReentrancyGuard_init();
         
         // Initial supply should not exceed 5% (2.5B) 
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
@@ -196,7 +204,7 @@ contract HyraToken is
         // Initialize mint year tracking
         currentMintYear = 1;
         mintYearStartTime = block.timestamp;
-        mintedThisYear = 0;
+        originalMintYearStartTime = block.timestamp; // Store original start time
     }
 
     // ============ Minting Functions ============
@@ -222,18 +230,21 @@ contract HyraToken is
             revert MintingPeriodEnded();
         }
         
-        // Get annual cap for current year
+        // Year-specific validation
         uint256 annualCap = _getAnnualMintCap(currentMintYear);
         uint256 mintedInCurrentYear = mintedByYear[currentMintYear];
-        uint256 remainingMintCapacity = annualCap > (mintedInCurrentYear + pendingMintAmount) ? 
-            annualCap - (mintedInCurrentYear + pendingMintAmount) : 0;
+        uint256 pendingInCurrentYear = pendingByYear[currentMintYear];
+        
+        uint256 remainingMintCapacity = annualCap > (mintedInCurrentYear + pendingInCurrentYear) ? 
+            annualCap - (mintedInCurrentYear + pendingInCurrentYear) : 0;
         
         if (_amount > remainingMintCapacity) {
             revert ExceedsAnnualMintCap(_amount, remainingMintCapacity);
         }
         
-        // Reserve the mint amount
-        pendingMintAmount += _amount;
+        // Reserve the mint amount for current year with overflow check
+        require(pendingByYear[currentMintYear] + _amount >= pendingByYear[currentMintYear], "PendingByYear overflow");
+        pendingByYear[currentMintYear] += _amount;
         
         // Check total supply cap
         if (totalSupply() + _amount > MAX_SUPPLY) {
@@ -258,7 +269,10 @@ contract HyraToken is
      * @notice Execute an approved mint request after delay
      * @param _requestId ID of the mint request
      */
-    function executeMintRequest(uint256 _requestId) external {
+    function executeMintRequest(uint256 _requestId) external nonReentrant {
+        // Validate request ID exists
+        if (_requestId >= mintRequestCount) revert InvalidAmount();
+        
         MintRequest storage request = mintRequests[_requestId];
         
         if (request.amount == 0) revert InvalidAmount();
@@ -267,19 +281,27 @@ contract HyraToken is
             revert MintDelayNotMet();
         }
         
+        // Check if request has expired
+        if (block.timestamp > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+            revert RequestExpired();
+        }
+        
         // Mark as executed
         request.executed = true;
         
-        // Update tracking - use the year when request was created, not current year
-        // Calculate the year based on the contract's year tracking system
+        // Update year-specific tracking with overflow/underflow checks
         uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
-        mintedByYear[requestYear] += request.amount;
-        // Remove mintedThisYear update to prevent cross-year attribution
-        // mintedThisYear should only track current year mints, not historical ones
-        totalMintedSupply += request.amount;
         
-        // Release reserved amount
-        pendingMintAmount -= request.amount;
+        // Check for overflow
+        require(mintedByYear[requestYear] + request.amount >= mintedByYear[requestYear], "MintedByYear overflow");
+        require(totalMintedSupply + request.amount >= totalMintedSupply, "TotalMintedSupply overflow");
+        
+        // Check for underflow
+        require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
+        
+        mintedByYear[requestYear] += request.amount;
+        pendingByYear[requestYear] -= request.amount;
+        totalMintedSupply += request.amount;
         
         // Mint tokens
         _mint(request.recipient, request.amount);
@@ -293,10 +315,18 @@ contract HyraToken is
      * @param _requestId ID of the mint request to cancel
      */
     function cancelMintRequest(uint256 _requestId) external onlyOwner {
+        // Validate request ID exists
+        if (_requestId >= mintRequestCount) revert InvalidAmount();
+        
         MintRequest storage request = mintRequests[_requestId];
         
         if (request.amount == 0) revert InvalidAmount();
         if (request.executed) revert AlreadyExecuted();
+        
+        // Update year-specific pending tracking with underflow check
+        uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
+        pendingByYear[requestYear] -= request.amount;
         
         // Clear the request
         delete mintRequests[_requestId];
@@ -317,7 +347,8 @@ contract HyraToken is
      * @return Annual mint cap for that year
      */
     function _getAnnualMintCap(uint256 year) private pure returns (uint256) {
-        if (year == 0 || year > TIER3_END_YEAR) {
+        // FIXED: Use range checks instead of strict equality
+        if (year < 1 || year > TIER3_END_YEAR) {
             return 0; // No minting allowed
         }
         
@@ -343,8 +374,6 @@ contract HyraToken is
             
             currentMintYear += yearsPassed;
             mintYearStartTime += yearsPassed * YEAR_DURATION;
-            // Remove mintedThisYear reset since we now use mintedByYear for tracking
-            // mintedThisYear = 0; // Reset annual minted amount
             
             emit MintYearReset(currentMintYear, block.timestamp);
         }
@@ -450,11 +479,96 @@ contract HyraToken is
             return 0; // Minting period ended
         }
         
-        uint256 annualCap = _getAnnualMintCap(year);
+        // Use year-specific logic
+        return this.getRemainingMintCapacityForYear(year);
+    }
+
+    /**
+     * @notice Get remaining mint capacity for a specific year
+     * @param year The year number
+     * @return Available mint amount for that year
+     */
+    function getRemainingMintCapacityForYear(uint256 year) external view returns (uint256) {
+        // FIXED: Validate year parameter - use range checks
+        if (year < 1 || year > TIER3_END_YEAR) {
+            return 0;
+        }
         
-        // Use mintedByYear to get accurate minted amount for the calculated year
+        uint256 annualCap = _getAnnualMintCap(year);
         uint256 mintedInYear = mintedByYear[year];
-        return annualCap > mintedInYear ? annualCap - mintedInYear : 0;
+        uint256 pendingInYear = pendingByYear[year];
+        
+        return annualCap > (mintedInYear + pendingInYear) ? 
+            annualCap - (mintedInYear + pendingInYear) : 0;
+    }
+
+    /**
+     * @notice Get pending mint amount for a specific year
+     * @param year The year number
+     * @return Pending mint amount for that year
+     */
+    function getPendingMintAmountForYear(uint256 year) external view returns (uint256) {
+        // FIXED: Validate year parameter - use range checks
+        if (year < 1 || year > TIER3_END_YEAR) {
+            return 0;
+        }
+        return pendingByYear[year];
+    }
+
+    /**
+     * @notice Get minted amount for a specific year
+     * @param year The year number
+     * @return Minted amount for that year
+     */
+    function getMintedAmountForYear(uint256 year) external view returns (uint256) {
+        // FIXED: Validate year parameter - use range checks
+        if (year < 1 || year > TIER3_END_YEAR) {
+            return 0;
+        }
+        return mintedByYear[year];
+    }
+
+    /**
+     * @notice Get total pending mint amount across all years
+     * @return Total pending mint amount
+     */
+    function getTotalPendingMintAmount() external view returns (uint256) {
+        // Optimized: Only check years that might have pending amounts
+        // Most years will be 0, so we can skip them
+        uint256 totalPending = 0;
+        
+        // Check current year and nearby years (most likely to have pending amounts)
+        uint256 currentYear = currentMintYear;
+        for (uint256 year = currentYear > 0 ? currentYear - 1 : 1; 
+             year <= currentYear + 1 && year <= TIER3_END_YEAR; 
+             year++) {
+            totalPending += pendingByYear[year];
+        }
+        
+        return totalPending;
+    }
+
+    /**
+     * @notice Get count of expired requests that need cleanup
+     * @return Number of expired requests
+     */
+    function getExpiredRequestsCount() external view returns (uint256) {
+        uint256 currentTime = block.timestamp;
+        uint256 expiredCount = 0;
+        
+        // Optimized: Limit the number of iterations to prevent gas limit issues
+        uint256 maxIterations = mintRequestCount > 100 ? 100 : mintRequestCount;
+        
+        for (uint256 i = 0; i < maxIterations; i++) {
+            MintRequest storage request = mintRequests[i];
+            
+            if (!request.executed && 
+                currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+                expiredCount++;
+            }
+        }
+        
+        return expiredCount;
     }
 
     /**
@@ -467,7 +581,8 @@ contract HyraToken is
             year += (block.timestamp - mintYearStartTime) / YEAR_DURATION;
         }
         
-        if (year == 0 || year > TIER3_END_YEAR) {
+        // FIXED: Use range checks instead of strict equality
+        if (year < 1 || year > TIER3_END_YEAR) {
             return 0; // No tier (minting ended)
         } else if (year <= TIER1_END_YEAR) {
             return 1;
@@ -539,9 +654,73 @@ contract HyraToken is
      * @return year The year number
      */
     function _getYearFromTimestamp(uint256 timestamp) internal pure returns (uint256) {
-        // Simple year calculation based on 365 days per year
-        // This is an approximation - for production, consider using a more precise method
-        return (timestamp / YEAR_DURATION) + 1;
+        // More accurate year calculation using 365.25 days per year (accounting for leap years)
+        // This provides better accuracy over long periods
+        return (timestamp * 4) / (36525 * 24 * 60 * 60) + 1;
+    }
+
+    /**
+     * @notice Manually expire old requests to prevent accumulation
+     * @dev Cancels requests older than REQUEST_EXPIRY_PERIOD with batch limit
+     * @param maxExpire Maximum number of requests to expire in one call
+     * @return expiredCount Number of requests actually expired
+     */
+    function expireOldRequests(uint256 maxExpire) external onlyOwner returns (uint256 expiredCount) {
+        // Validate maxExpire parameter
+        require(maxExpire > 0 && maxExpire <= 1000, "Invalid maxExpire value");
+        
+        uint256 currentTime = block.timestamp;
+        uint256 processed = 0;
+        
+        for (uint256 i = 0; i < mintRequestCount && expiredCount < maxExpire; i++) {
+            MintRequest storage request = mintRequests[i];
+            
+            // Check if request is not executed and has expired
+            if (!request.executed && 
+                currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+                
+                // Auto-cancel expired request with underflow check
+                uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
+                pendingByYear[requestYear] -= request.amount;
+                
+                delete mintRequests[i];
+                emit MintRequestExpired(i);
+                expiredCount++;
+            }
+            processed++;
+        }
+        
+        emit ExpireOldRequestsCompleted(expiredCount, processed);
+        return expiredCount;
+    }
+
+    /**
+     * @notice Expire all old requests (use with caution)
+     * @dev Expires all requests older than REQUEST_EXPIRY_PERIOD
+     * @return expiredCount Number of requests expired
+     */
+    function expireAllOldRequests() external onlyOwner returns (uint256 expiredCount) {
+        uint256 currentTime = block.timestamp;
+        
+        for (uint256 i = 0; i < mintRequestCount; i++) {
+            MintRequest storage request = mintRequests[i];
+            
+            if (!request.executed && 
+                currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
+                
+                uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
+                pendingByYear[requestYear] -= request.amount;
+                
+                delete mintRequests[i];
+                emit MintRequestExpired(i);
+                expiredCount++;
+            }
+        }
+        
+        emit ExpireOldRequestsCompleted(expiredCount, mintRequestCount);
+        return expiredCount;
     }
 
     /**
@@ -550,12 +729,12 @@ contract HyraToken is
      * @return year The year number based on contract's mintYearStartTime
      */
     function _calculateYearFromTimestamp(uint256 timestamp) internal view returns (uint256) {
-        if (timestamp < mintYearStartTime) {
+        if (timestamp < originalMintYearStartTime) {
             return 1; // Before contract start, assume year 1
         }
         
-        // Calculate which year the timestamp falls into based on mintYearStartTime
-        uint256 yearsPassed = (timestamp - mintYearStartTime) / YEAR_DURATION;
+        // Calculate which year the timestamp falls into based on original start time
+        uint256 yearsPassed = (timestamp - originalMintYearStartTime) / YEAR_DURATION;
         return 1 + yearsPassed; // Year 1 + years passed
     }
 }

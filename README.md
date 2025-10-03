@@ -63,7 +63,7 @@ npx hardhat run scripts/deploy.ts --network localhost
 
 ---
 
-## ** Documentation**
+## Documentation
 
 - **[Documentation Overview](./docs/README.md)** - Complete documentation guide
 - **[Audit Reports](./docs/audit/)** - Security audit reports and fixes
