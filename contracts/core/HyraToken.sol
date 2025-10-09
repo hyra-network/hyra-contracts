@@ -649,34 +649,26 @@ contract HyraToken is
     // ============ Helper Functions ============
     
     /**
-     * @notice Get year from timestamp
-     * @param timestamp The timestamp to convert
-     * @return year The year number
-     */
-    function _getYearFromTimestamp(uint256 timestamp) internal pure returns (uint256) {
-        // More accurate year calculation using 365.25 days per year (accounting for leap years)
-        // This provides better accuracy over long periods
-        return (timestamp * 4) / (36525 * 24 * 60 * 60) + 1;
-    }
-
-    /**
      * @notice Manually expire old requests to prevent accumulation
-     * @dev Cancels requests older than REQUEST_EXPIRY_PERIOD with batch limit
-     * @param maxExpire Maximum number of requests to expire in one call
+     * @dev Cancels requests older than REQUEST_EXPIRY_PERIOD within specified range
+     * @param startId Starting request ID (inclusive)
+     * @param endId Ending request ID (exclusive)
      * @return expiredCount Number of requests actually expired
      */
-    function expireOldRequests(uint256 maxExpire) external onlyOwner returns (uint256 expiredCount) {
-        // Validate maxExpire parameter
-        require(maxExpire > 0 && maxExpire <= 1000, "Invalid maxExpire value");
+    function expireOldRequests(uint256 startId, uint256 endId) external onlyOwner returns (uint256 expiredCount) {
+        // Validate parameters
+        require(startId < endId, "Invalid range: startId must be less than endId");
+        require(endId <= mintRequestCount, "Invalid range: endId exceeds total requests");
+        require(endId - startId <= 1000, "Range too large: maximum 1000 requests per call");
         
         uint256 currentTime = block.timestamp;
-        uint256 processed = 0;
         
-        for (uint256 i = 0; i < mintRequestCount && expiredCount < maxExpire; i++) {
+        for (uint256 i = startId; i < endId; i++) {
             MintRequest storage request = mintRequests[i];
             
             // Check if request is not executed and has expired
             if (!request.executed && 
+                request.amount > 0 && // Check if request exists
                 currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
                 
                 // Auto-cancel expired request with underflow check
@@ -688,39 +680,48 @@ contract HyraToken is
                 emit MintRequestExpired(i);
                 expiredCount++;
             }
-            processed++;
         }
         
-        emit ExpireOldRequestsCompleted(expiredCount, processed);
+        emit ExpireOldRequestsCompleted(expiredCount, endId - startId);
         return expiredCount;
     }
 
     /**
-     * @notice Expire all old requests (use with caution)
-     * @dev Expires all requests older than REQUEST_EXPIRY_PERIOD
-     * @return expiredCount Number of requests expired
+     * @notice Expire all old requests in batches (use with caution for large datasets)
+     * @dev Expires all requests older than REQUEST_EXPIRY_PERIOD by processing in batches
+     * @param batchSize Number of requests to process per batch (max 1000)
+     * @return totalExpired Total number of requests expired across all batches
      */
-    function expireAllOldRequests() external onlyOwner returns (uint256 expiredCount) {
-        uint256 currentTime = block.timestamp;
+    function expireAllOldRequests(uint256 batchSize) external onlyOwner returns (uint256 totalExpired) {
+        require(batchSize > 0 && batchSize <= 1000, "Invalid batchSize: must be 1-1000");
         
-        for (uint256 i = 0; i < mintRequestCount; i++) {
+        uint256 currentTime = block.timestamp;
+        uint256 processed = 0;
+        
+        for (uint256 i = 0; i < mintRequestCount && processed < batchSize; i++) {
             MintRequest storage request = mintRequests[i];
             
-            if (!request.executed && 
-                currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
-                
+            // Skip already deleted or executed requests
+            if (request.amount == 0 || request.executed) {
+                continue;
+            }
+            
+            // Check if request has expired
+            if (currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
                 uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
                 require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
                 pendingByYear[requestYear] -= request.amount;
                 
                 delete mintRequests[i];
                 emit MintRequestExpired(i);
-                expiredCount++;
+                totalExpired++;
             }
+            
+            processed++;
         }
         
-        emit ExpireOldRequestsCompleted(expiredCount, mintRequestCount);
-        return expiredCount;
+        emit ExpireOldRequestsCompleted(totalExpired, processed);
+        return totalExpired;
     }
 
     /**
