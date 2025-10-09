@@ -177,6 +177,7 @@ contract HyraGovernor is
     ) public override(GovernorUpgradeable, IGovernor) nonReentrant returns (uint256) {
         uint256 proposalId = hashProposal(targets, values, calldatas, descriptionHash);
         
+        // Checks: Verify proposal state and authorization
         ProposalState currentState = state(proposalId);
         if (currentState == ProposalState.Canceled) {
             revert ProposalAlreadyCancelled();
@@ -188,21 +189,22 @@ contract HyraGovernor is
             revert UnauthorizedCancellation();
         }
         
-        // FIXED: Apply Checks-Effects-Interactions pattern
-        // 1. Update state first (Effects)
-        proposalCancelled[proposalId] = true;
-        emit ProposalCancelled(proposalId);
-        
-        // 2. Then make external calls (Interactions)
+        // Interactions: Call OpenZeppelin's trusted cancel logic first
+        // This allows OZ to handle state transitions properly before we mark it cancelled
         if (securityCouncilMembers[msg.sender]) {
             // Directly call internal _cancel function
             _cancel(targets, values, calldatas, descriptionHash);
-            return proposalId;
         } else {
             // For proposers, use parent function
-            uint256 result = super.cancel(targets, values, calldatas, descriptionHash);
-            return result;
+            super.cancel(targets, values, calldatas, descriptionHash);
         }
+        
+        // Effects: Update our custom cancellation tracking after OZ cancel completes
+        // This must be done AFTER super.cancel() to avoid interfering with OZ's state() checks
+        proposalCancelled[proposalId] = true;
+        emit ProposalCancelled(proposalId);
+        
+        return proposalId;
     }
 
     // ============ DAO Role Management Functions ============
@@ -427,8 +429,9 @@ contract HyraGovernor is
             return true;
         }
         
+        // FIXED: Correct destructuring order - proposalVotes returns (againstVotes, forVotes, abstainVotes)
         // Get current votes (for + abstain votes count toward quorum)
-        (uint256 forVotes, , uint256 abstainVotes) = proposalVotes(proposalId);
+        (, uint256 forVotes, uint256 abstainVotes) = proposalVotes(proposalId);
         uint256 currentVotes = forVotes + abstainVotes;
         
         return currentVotes >= requiredQuorum;
