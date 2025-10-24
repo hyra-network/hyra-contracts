@@ -11,6 +11,7 @@ import "../interfaces/ITokenVesting.sol";
 import "../security/SecureExecutorManager.sol";
 import "../security/ProxyAdminValidator.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../proxy/HyraTransparentUpgradeableProxy.sol";
 
 /**
@@ -104,16 +105,35 @@ contract HyraDAOInitializer {
         // 2. Deploy ProxyDeployer
         result.proxyDeployer = address(new HyraProxyDeployer());
         
-        // 2.1 Deploy SecureExecutorManager
+        // 2.1 Deploy SecureExecutorManager with proxy pattern
         address[] memory initialExecutors = new address[](1);
         initialExecutors[0] = address(this); // Temporary executor
         
-        result.executorManager = address(new SecureExecutorManager());
-        SecureExecutorManager(result.executorManager).initialize(address(this), initialExecutors);
+        bytes memory executorManagerInitData = abi.encodeWithSelector(
+            SecureExecutorManager.initialize.selector,
+            address(this),
+            initialExecutors
+        );
         
-        // 2.2 Deploy ProxyAdminValidator
-        result.proxyAdminValidator = address(new ProxyAdminValidator());
-        ProxyAdminValidator(result.proxyAdminValidator).initialize(address(this));
+        result.executorManager = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
+            address(new SecureExecutorManager()),
+            result.proxyAdmin,
+            executorManagerInitData,
+            "EXECUTOR_MANAGER"
+        );
+        
+        // 2.2 Deploy ProxyAdminValidator with proxy pattern
+        bytes memory proxyAdminValidatorInitData = abi.encodeWithSelector(
+            ProxyAdminValidator.initialize.selector,
+            address(this)
+        );
+        
+        result.proxyAdminValidator = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
+            address(new ProxyAdminValidator()),
+            result.proxyAdmin,
+            proxyAdminValidatorInitData,
+            "PROXY_ADMIN_VALIDATOR"
+        );
         
         // 3. Deploy Timelock implementation
         result.timelockImplementation = address(new HyraTimelock());
@@ -173,8 +193,8 @@ contract HyraDAOInitializer {
             "TOKEN"
         );
         
-        // 9. Initialize Vesting contract with token address
-        ITokenVesting(result.vestingProxy).initialize(result.tokenProxy, result.timelockProxy);
+        // 9. Initialize Vesting contract with token address and this contract as temporary owner
+        ITokenVesting(result.vestingProxy).initialize(result.tokenProxy, address(this));
         
         // 10. Deploy Governor implementation
         result.governorImplementation = address(new HyraGovernor());
@@ -198,14 +218,19 @@ contract HyraDAOInitializer {
         );
         
         // FIXED: Apply Checks-Effects-Interactions pattern
-        // 12. Configure roles and setup executor manager
-        _configureRoles(result, config);
-        
-        // 12.1 Setup executor manager and proxy admin validator in timelock
+        // 12. Setup executor manager and proxy admin validator in timelock BEFORE configuring roles
         HyraTimelock(payable(result.timelockProxy)).setExecutorManager(SecureExecutorManager(result.executorManager));
         HyraTimelock(payable(result.timelockProxy)).setProxyAdminValidator(ProxyAdminValidator(result.proxyAdminValidator));
         
-        // 12.2 Authorize the deployed proxy admin in the validator
+        // 12.1 Configure roles AFTER setting up executor manager
+        _configureRoles(result, config);
+        
+        // 12.2 Set role manager for governor (required for security council management)
+        // Note: This requires a deployed DAORoleManager contract
+        // For now, we'll comment this out as it requires additional setup
+        // HyraGovernor(result.governorProxy).setRoleManager(DAORoleManager(roleManagerAddress));
+        
+        // 12.3 Authorize the deployed proxy admin in the validator
         ProxyAdminValidator(result.proxyAdminValidator).authorizeProxyAdmin(
             result.proxyAdmin,
             "HyraDAO SecureProxyAdmin",
@@ -249,6 +274,9 @@ contract HyraDAOInitializer {
         // Grant proposer role to Governor
         timelock.grantRole(PROPOSER_ROLE, result.governorProxy);
         
+        // Grant executor role to Governor (required for executing proposals)
+        timelock.grantRole(EXECUTOR_ROLE, result.governorProxy);
+        
         // Grant executor role to SecureExecutorManager
         // This replaces the problematic address(0) executor
         timelock.grantRole(EXECUTOR_ROLE, result.executorManager);
@@ -266,12 +294,13 @@ contract HyraDAOInitializer {
             // through governance proposal after deployment as governor is owned by timelock
         }
         
-        // Renounce admin role from deployer
-        timelock.renounceRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        // FIXED: Renounce admin role from address(this) instead of msg.sender
+        timelock.renounceRole(DEFAULT_ADMIN_ROLE, address(this));
     }
     
     /**
      * @notice Setup vesting schedules
+     * @dev FIXED: Handle ownership issue by temporarily transferring ownership to this contract
      */
     function _setupVestingSchedules(
         DeploymentResult memory result,
@@ -279,9 +308,8 @@ contract HyraDAOInitializer {
     ) private {
         VestingConfig memory vestingConfig = config.vestingConfig;
         
-        // Check vesting configuration
+        // Check vesting configuration - allow empty arrays for no vesting schedules
         require(
-            vestingConfig.beneficiaries.length > 0 &&
             vestingConfig.beneficiaries.length == vestingConfig.amounts.length &&
             vestingConfig.beneficiaries.length == vestingConfig.startTimes.length &&
             vestingConfig.beneficiaries.length == vestingConfig.durations.length &&
@@ -296,24 +324,34 @@ contract HyraDAOInitializer {
         // FIXED: Cache array length to avoid external calls in loop
         uint256 beneficiariesLength = vestingConfig.beneficiaries.length;
         
-        // Create vesting schedule for each beneficiary
-        for (uint256 i = 0; i < beneficiariesLength; i++) {
-            // FIXED: Handle return value from external call
-            try vesting.createVestingSchedule(
-                vestingConfig.beneficiaries[i],
-                vestingConfig.amounts[i],
-                vestingConfig.startTimes[i],
-                vestingConfig.durations[i],
-                vestingConfig.cliffs[i],
-                vestingConfig.revocable[i],
-                vestingConfig.purposes[i]
-            ) {
-                // Success - continue to next iteration
-            } catch {
-                // Log error and continue - don't fail entire deployment
-                // In production, consider emitting an event for failed vesting schedule creation
-                continue;
+        // Only proceed if there are vesting schedules to create
+        if (beneficiariesLength > 0) {
+            // FIXED: The vesting contract is already initialized with this contract as owner
+            // No need to transfer ownership since we're already the owner
+            
+            // Create vesting schedule for each beneficiary
+            for (uint256 i = 0; i < beneficiariesLength; i++) {
+                // FIXED: Handle return value from external call
+                try vesting.createVestingSchedule(
+                    vestingConfig.beneficiaries[i],
+                    vestingConfig.amounts[i],
+                    vestingConfig.startTimes[i],
+                    vestingConfig.durations[i],
+                    vestingConfig.cliffs[i],
+                    vestingConfig.revocable[i],
+                    vestingConfig.purposes[i]
+                ) {
+                    // Success - continue to next iteration
+                } catch {
+                    // Log error and continue - don't fail entire deployment
+                    // In production, consider emitting an event for failed vesting schedule creation
+                    continue;
+                }
             }
+            
+            // FIXED: Transfer ownership to timelock after creating vesting schedules
+            OwnableUpgradeable vestingOwnable = OwnableUpgradeable(result.vestingProxy);
+            vestingOwnable.transferOwnership(result.timelockProxy);
         }
     }
     
