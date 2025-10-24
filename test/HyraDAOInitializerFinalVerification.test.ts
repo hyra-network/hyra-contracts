@@ -330,12 +330,12 @@ describe("HyraDAOInitializer Final Verification - All Issues Fixed", function ()
             tokenName: "Hyra Test Token",
             tokenSymbol: "HYRA-TEST",
             initialSupply: ethers.parseEther("1000000"),
-            vestingContract: ethers.parseAddress("0x1234567890123456789012345678901234567890"), // Non-zero address
+            vestingContract: "0x1234567890123456789012345678901234567890", // Non-zero address
             timelockDelay: 300, // 5 minutes for testing
             votingDelay: 1,
             votingPeriod: 50,
             proposalThreshold: ethers.parseEther("10000"),
-            quorumPercentage: 1000,
+            quorumPercentage: 10, // 10% quorum
             securityCouncil: [user1.address, user2.address],
             multisigSigners: [user1.address, user2.address],
             requiredSignatures: 2,

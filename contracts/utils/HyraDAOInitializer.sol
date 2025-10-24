@@ -11,6 +11,7 @@ import "../interfaces/ITokenVesting.sol";
 import "../security/SecureExecutorManager.sol";
 import "../security/ProxyAdminValidator.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../proxy/HyraTransparentUpgradeableProxy.sol";
 
 /**
@@ -192,8 +193,8 @@ contract HyraDAOInitializer {
             "TOKEN"
         );
         
-        // 9. Initialize Vesting contract with token address
-        ITokenVesting(result.vestingProxy).initialize(result.tokenProxy, result.timelockProxy);
+        // 9. Initialize Vesting contract with token address and this contract as temporary owner
+        ITokenVesting(result.vestingProxy).initialize(result.tokenProxy, address(this));
         
         // 10. Deploy Governor implementation
         result.governorImplementation = address(new HyraGovernor());
@@ -325,12 +326,8 @@ contract HyraDAOInitializer {
         
         // Only proceed if there are vesting schedules to create
         if (beneficiariesLength > 0) {
-            // FIXED: Temporarily transfer ownership to this contract to create vesting schedules
-            address currentOwner = vesting.owner();
-            if (currentOwner != address(this)) {
-                // Transfer ownership from timelock to this contract temporarily
-                vesting.transferOwnership(address(this));
-            }
+            // FIXED: The vesting contract is already initialized with this contract as owner
+            // No need to transfer ownership since we're already the owner
             
             // Create vesting schedule for each beneficiary
             for (uint256 i = 0; i < beneficiariesLength; i++) {
@@ -352,10 +349,9 @@ contract HyraDAOInitializer {
                 }
             }
             
-            // FIXED: Transfer ownership back to timelock after creating vesting schedules
-            if (currentOwner != address(this)) {
-                vesting.transferOwnership(currentOwner);
-            }
+            // FIXED: Transfer ownership to timelock after creating vesting schedules
+            OwnableUpgradeable vestingOwnable = OwnableUpgradeable(result.vestingProxy);
+            vestingOwnable.transferOwnership(result.timelockProxy);
         }
     }
     
