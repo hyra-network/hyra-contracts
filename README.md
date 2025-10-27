@@ -41,25 +41,76 @@ docs/                  # Documentation and audit reports
 ---
 
 ## ** Quick Start**
-```shell
+
+### Install Dependencies
+```bash
+npm install
+# hoặc
 yarn install
+```
+
+### Compile Contracts
+```bash
+npm run compile
+# hoặc
 npx hardhat compile
+```
+
+### Run Tests
+```bash
+npm test
+# hoặc
 npx hardhat test
 ```
 
-
 ---
 
-## ** Development & Deployment**
-Run local node:
-```shell
+## ** Deployment**
+
+### Deploy to Testnet (Sepolia)
+
+1. **Setup Environment:**
+   ```bash
+   # Copy .env.example to .env
+   cp .env.example .env
+   
+   # Edit .env với your API keys
+   nano .env
+   ```
+
+2. **Get Testnet ETH:**
+   - Sepolia Faucet: https://sepoliafaucet.com
+   - Alchemy Faucet: https://www.alchemy.com/faucets/ethereum-sepolia
+
+3. **Deploy:**
+   ```bash
+   npm run deploy:sepolia
+   ```
+
+4. **Verify Contracts:**
+   ```bash
+   npm run verify:sepolia
+   ```
+
+### Development & Testing
+
+**Run local node:**
+```bash
 npx hardhat node
 ```
 
-Deploy:
-```shell
-npx hardhat run scripts/deploy.ts --network localhost
+**Deploy to localhost:**
+```bash
+npm run deploy:localhost
 ```
+
+### 📚 More Documentation
+
+- **[Deployment Summary](./DEPLOY_README.md)** - 🚀 Quick deploy guide
+- **[Quick Start Guide](./QUICK_START.md)** - Hướng dẫn deploy nhanh (5 phút)
+- **[Full Deployment Guide](./DEPLOYMENT_GUIDE.md)** - Hướng dẫn deploy chi tiết
+- **[RPC Providers](./RPC_PROVIDERS.md)** - So sánh các RPC providers
+- **[Audit Reports](./docs/audit/)** - Security audit reports
 
 ---
 

@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "dotenv/config";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -7,10 +8,13 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 1, // Minimize size to deploy HyraDAOInitializer
       },
-      viaIR: true,
+      viaIR: true, // Required to compile complex contracts
       evmVersion: "cancun",
+      metadata: {
+        bytecodeHash: "none", // Remove metadata to reduce initcode size
+      },
     },
   },
   networks: {
@@ -40,11 +44,7 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: {
-      sepolia: process.env.ETHERSCAN_API_KEY || "YOUR_ETHERSCAN_API_KEY",
-      goerli: process.env.ETHERSCAN_API_KEY || "YOUR_ETHERSCAN_API_KEY",
-      mainnet: process.env.ETHERSCAN_API_KEY || "YOUR_ETHERSCAN_API_KEY",
-    },
+    apiKey: process.env.ETHERSCAN_API_KEY || "YOUR_ETHERSCAN_API_KEY",
   },
 };
 
