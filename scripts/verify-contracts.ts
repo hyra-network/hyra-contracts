@@ -95,56 +95,79 @@ async function verifyContracts() {
       throw new Error("No deployment information found for this network");
     }
 
-    // Prepare verification config
+    // Prepare verification config based on deployment structure
+    const contracts = [];
+    
+    // Check for new deployment structure (with contracts object)
+    if (deploymentInfo.contracts) {
+      if (deploymentInfo.contracts.tokenImplementation) {
+        contracts.push({
+          name: "HyraToken",
+          address: deploymentInfo.contracts.tokenImplementation,
+          constructorArgs: []
+        });
+      }
+      if (deploymentInfo.contracts.proxyAdmin) {
+        contracts.push({
+          name: "SecureProxyAdmin",
+          address: deploymentInfo.contracts.proxyAdmin,
+          constructorArgs: ["0x424af7536BED1201D67eC27b6849419BAE68070b", "1"] // deployer, required sigs
+        });
+      }
+      if (deploymentInfo.contracts.timelockImplementation) {
+        contracts.push({
+          name: "HyraTimelock",
+          address: deploymentInfo.contracts.timelockImplementation,
+          constructorArgs: []
+        });
+      }
+      if (deploymentInfo.contracts.governorImplementation) {
+        contracts.push({
+          name: "HyraGovernor",
+          address: deploymentInfo.contracts.governorImplementation,
+          constructorArgs: []
+        });
+      }
+      if (deploymentInfo.contracts.proxyDeployer) {
+        contracts.push({
+          name: "HyraProxyDeployer",
+          address: deploymentInfo.contracts.proxyDeployer,
+          constructorArgs: []
+        });
+      }
+      if (deploymentInfo.contracts.vesting) {
+        contracts.push({
+          name: "TokenVesting",
+          address: deploymentInfo.contracts.vesting,
+          constructorArgs: []
+        });
+      }
+      if (deploymentInfo.contracts.executorManager) {
+        contracts.push({
+          name: "SecureExecutorManager",
+          address: deploymentInfo.contracts.executorManager,
+          constructorArgs: []
+        });
+      }
+      if (deploymentInfo.contracts.proxyAdminValidator) {
+        contracts.push({
+          name: "ProxyAdminValidator",
+          address: deploymentInfo.contracts.proxyAdminValidator,
+          constructorArgs: []
+        });
+      }
+      if (deploymentInfo.contracts.daoInitializer) {
+        contracts.push({
+          name: "DAOConfigHelper",
+          address: deploymentInfo.contracts.daoInitializer,
+          constructorArgs: []
+        });
+      }
+    }
+    
     const config: VerificationConfig = {
       network,
-      contracts: [
-        {
-          name: "HyraDAOInitializer",
-          address: deploymentInfo.daoInitializer,
-          constructorArgs: []
-        },
-        {
-          name: "HyraToken",
-          address: deploymentInfo.result.tokenProxy,
-          constructorArgs: []
-        },
-        {
-          name: "HyraGovernor",
-          address: deploymentInfo.result.governorProxy,
-          constructorArgs: []
-        },
-        {
-          name: "HyraTimelock",
-          address: deploymentInfo.result.timelockProxy,
-          constructorArgs: []
-        },
-        {
-          name: "TokenVesting",
-          address: deploymentInfo.result.vestingProxy,
-          constructorArgs: []
-        },
-        {
-          name: "SecureProxyAdmin",
-          address: deploymentInfo.result.proxyAdmin,
-          constructorArgs: []
-        },
-        {
-          name: "HyraProxyDeployer",
-          address: deploymentInfo.result.proxyDeployer,
-          constructorArgs: []
-        },
-        {
-          name: "SecureExecutorManager",
-          address: deploymentInfo.result.executorManager,
-          constructorArgs: []
-        },
-        {
-          name: "ProxyAdminValidator",
-          address: deploymentInfo.result.proxyAdminValidator,
-          constructorArgs: []
-        }
-      ]
+      contracts
     };
 
     // Verify contracts
@@ -170,14 +193,17 @@ async function loadDeploymentInfo(network: string): Promise<any> {
   }
 
   const files = fs.readdirSync(deploymentDir);
-  const networkFiles = files.filter((file: string) => file.includes(network));
+  // Filter out error files and get success deployments only
+  const networkFiles = files.filter((file: string) => 
+    file.includes(network) && !file.includes("error")
+  );
 
   if (networkFiles.length === 0) {
     throw new Error(`No deployment files found for network: ${network}`);
   }
 
   // Get the most recent deployment file
-  const latestFile = networkFiles.sort().pop();
+  const latestFile = networkFiles.sort().reverse()[0]; // Get most recent
   const filepath = path.join(deploymentDir, latestFile);
   
   const deploymentInfo = JSON.parse(fs.readFileSync(filepath, "utf8"));
