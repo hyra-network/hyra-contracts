@@ -265,11 +265,8 @@ contract SecureProxyAdmin is ProxyAdmin, AccessControl {
         delete pendingUpgrades[proxy];
         
         // 2. Then make external calls (Interactions)
-        upgradeAndCall(
-            ITransparentUpgradeableProxy(payable(proxy)),
-            upgrade.implementation,
-            bytes("")
-        );
+        // Call proxy's admin function directly as this contract is the admin
+        ITransparentUpgradeableProxy(payable(proxy)).upgradeToAndCall(upgrade.implementation, bytes(""));
         
         emit UpgradeExecuted(proxy, upgrade.implementation, upgradeId);
     }

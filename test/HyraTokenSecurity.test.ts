@@ -11,8 +11,8 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
   let beneficiary: SignerWithAddress;
   let other: SignerWithAddress;
 
-  const INITIAL_SUPPLY = ethers.utils.parseEther("2500000000"); // 2.5B tokens
-  const MAX_INITIAL_SUPPLY = ethers.utils.parseEther("2500000000"); // 5% of 50B
+  const INITIAL_SUPPLY = ethers.parseEther("1000000"); // smaller initial supply to leave annual cap headroom
+  const MAX_INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 5% of 50B
 
   async function deployTokenFixture() {
     const [deployer, ownerAddr, beneficiaryAddr, otherAddr] = await ethers.getSigners();
@@ -28,7 +28,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     await proxyDeployer.waitForDeployment();
     
     const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.getAddress());
+    const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
     await proxyAdmin.waitForDeployment();
     
     // Deploy mock vesting contract
@@ -63,7 +63,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       "HYRA",
       INITIAL_SUPPLY,
       vestingProxy, // Use vesting contract instead of single holder
-      ownerAddr.getAddress() // governance
+      await ownerAddr.getAddress() // governance
     ]);
     
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
@@ -104,7 +104,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     await proxyDeployer.waitForDeployment();
     
     const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.getAddress());
+    const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
     await proxyAdmin.waitForDeployment();
     
     // Deploy with legacy initialization (single holder)
@@ -112,8 +112,8 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       "Hyra Token Legacy",
       "HYRA-L",
       INITIAL_SUPPLY,
-      beneficiaryAddr.getAddress(), // Single holder (RISKY)
-      ownerAddr.getAddress() // governance
+      await beneficiaryAddr.getAddress(), // Single holder (RISKY)
+      await ownerAddr.getAddress() // governance
     ]);
     
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
@@ -155,7 +155,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       expect(await token.symbol()).to.equal("HYRA");
       expect(await token.totalSupply()).to.equal(INITIAL_SUPPLY);
       expect(await token.balanceOf(await vestingContract.getAddress())).to.equal(INITIAL_SUPPLY);
-      expect(await token.owner()).to.equal(owner.getAddress());
+      expect(await token.owner()).to.equal(await owner.getAddress());
     });
 
     it("should emit InitialDistribution event with vesting contract", async function () {
@@ -170,7 +170,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       
       // Try to transfer from vesting contract (should fail if vesting contract doesn't have transfer function)
       await expect(
-        vestingContract.connect(owner).transfer(beneficiary.getAddress(), ethers.utils.parseEther("1000"))
+        vestingContract.connect(owner).transfer(beneficiary.getAddress(), ethers.parseEther("1000"))
       ).to.be.reverted; // Mock vesting contract doesn't have transfer function
     });
 
@@ -212,14 +212,14 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       )).wait();
       
       // Try to initialize with amount exceeding 5% limit
-      const excessiveSupply = ethers.utils.parseEther("2500000001"); // Just over 5%
+      const excessiveSupply = ethers.parseEther("2500000001"); // Just over 5%
       
       const tokenInit = Token.interface.encodeFunctionData("initialize", [
         "Test Token",
         "TEST",
         excessiveSupply,
         vestingProxy,
-        owner.getAddress()
+        await owner.getAddress()
       ]);
       
       await expect(
@@ -229,7 +229,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
           tokenInit,
           "TOKEN"
         )
-      ).to.be.revertedWithCustomError("Initial supply exceeds 5% of max supply");
+      ).to.be.revertedWith("Initial supply exceeds 5% of max supply");
     });
   });
 
@@ -247,12 +247,12 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       expect(await token.symbol()).to.equal("HYRA-L");
       expect(await token.totalSupply()).to.equal(INITIAL_SUPPLY);
       expect(await token.balanceOf(beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-      expect(await token.owner()).to.equal(owner.getAddress());
+      expect(await token.owner()).to.equal(await owner.getAddress());
     });
 
     it("should allow beneficiary to transfer tokens (demonstrating the risk)", async function () {
       // This demonstrates the centralization risk - single holder can transfer all tokens
-      const transferAmount = ethers.utils.parseEther("1000000");
+      const transferAmount = ethers.parseEther("1000000");
       
       await expect(
         token.connect(beneficiary).transfer(other.getAddress(), transferAmount)
@@ -283,7 +283,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       await expect(
         legacyFixture.token.connect(legacyFixture.beneficiary).transfer(
           legacyFixture.other.getAddress(), 
-          ethers.utils.parseEther("1000000")
+          ethers.parseEther("1000000")
         )
       ).to.not.be.reverted;
       
@@ -291,7 +291,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       await expect(
         secureFixture.vesting.connect(secureFixture.owner).transfer(
           secureFixture.beneficiary.getAddress(), 
-          ethers.utils.parseEther("1000000")
+          ethers.parseEther("1000000")
         )
       ).to.be.reverted; // Mock vesting doesn't have direct transfer
     });
@@ -308,10 +308,10 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     });
 
     it("should create mint request securely", async function () {
-      const mintAmount = ethers.utils.parseEther("1000000");
+      const mintAmount = ethers.parseEther("1000000");
       const purpose = "Test mint request";
       
-      const tx = await token.connect(owner).connect(governance).createMintRequest(
+      const tx = await token.connect(owner).createMintRequest(
         beneficiary.getAddress(),
         mintAmount,
         purpose
@@ -325,11 +325,11 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     });
 
     it("should enforce 2-day delay for mint execution", async function () {
-      const mintAmount = ethers.utils.parseEther("1000000");
+      const mintAmount = ethers.parseEther("1000000");
       const purpose = "Test mint request";
       
       // Create mint request
-      const tx = await token.connect(owner).connect(governance).createMintRequest(
+      const tx = await token.connect(owner).createMintRequest(
         beneficiary.getAddress(),
         mintAmount,
         purpose
@@ -340,7 +340,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       
       // Try to execute immediately (should fail)
       await expect(
-        token.connect(governance).executeMintRequest(requestId)
+        token.connect(owner).executeMintRequest(requestId)
       ).to.be.revertedWithCustomError(token, "MintDelayNotMet");
       
       // Wait for delay period
@@ -348,16 +348,16 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       
       // Now should succeed
       await expect(
-        token.connect(governance).executeMintRequest(requestId)
+        token.connect(owner).executeMintRequest(requestId)
       ).to.not.be.reverted;
     });
 
     it("should only allow owner to create mint requests", async function () {
-      const mintAmount = ethers.utils.parseEther("1000000");
+      const mintAmount = ethers.parseEther("1000000");
       const purpose = "Test mint request";
       
       await expect(
-        token.connect(beneficiary).connect(governance).createMintRequest(
+        token.connect(beneficiary).createMintRequest(
           beneficiary.getAddress(),
           mintAmount,
           purpose
@@ -382,16 +382,16 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       ).to.emit(token, "GovernanceTransferred")
       .withArgs(owner.getAddress(), beneficiary.getAddress());
       
-      expect(await token.owner()).to.equal(beneficiary.getAddress());
+      expect(await token.owner()).to.equal(await beneficiary.getAddress());
     });
 
     it("should allow governance to pause/unpause", async function () {
       // First, mint some tokens to beneficiary for testing
-      const mintAmount = ethers.utils.parseEther("10000");
+      const mintAmount = ethers.parseEther("10000");
       const purpose = "Test tokens for pause/unpause";
       
       // Create and execute mint request
-      await token.connect(owner).connect(governance).createMintRequest(
+      await token.connect(owner).createMintRequest(
         beneficiary.getAddress(),
         mintAmount,
         purpose
@@ -402,31 +402,31 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       
       // Execute mint request
       const requestId = await token.mintRequestCount() - 1n;
-      await token.connect(owner).connect(governance).executeMintRequest(requestId);
+      await token.connect(owner).executeMintRequest(requestId);
       
       // Now test pause/unpause
       await expect(
-        token.connect(owner).connect(governance).pause()
+        token.connect(owner).pause()
       ).to.emit(token, "TokensPaused")
       .withArgs(owner.getAddress());
       
       // Try to transfer while paused (should fail)
       await expect(
-        token.connect(beneficiary).transfer(other.getAddress(), ethers.utils.parseEther("1000"))
+        token.connect(beneficiary).transfer(other.getAddress(), ethers.parseEther("1000"))
       ).to.be.revertedWithCustomError(token, "EnforcedPause");
       
       await expect(
-        token.connect(owner).connect(governance).unpause()
+        token.connect(owner).unpause()
       ).to.emit(token, "TokensUnpaused")
       .withArgs(owner.getAddress());
       
       // Transfer should work after unpause
-      const tx = await token.connect(beneficiary).transfer(other.getAddress(), ethers.utils.parseEther("1000"));
+      const tx = await token.connect(beneficiary).transfer(other.getAddress(), ethers.parseEther("1000"));
       await tx.wait();
       
       // Verify the transfer actually happened
       const balance = await token.balanceOf(other.getAddress());
-      expect(balance).to.equal(ethers.utils.parseEther("1000"));
+      expect(balance).to.equal(ethers.parseEther("1000"));
     });
   });
 });

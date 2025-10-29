@@ -36,7 +36,7 @@ describe("Simple Coverage Test", function () {
 
     
     const HyraProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await HyraProxyAdmin.deploy(await timelock.getAddress());
+    const proxyAdmin = await HyraProxyAdmin.deploy(owner.address);
     await proxyAdmin.waitForDeployment();
 
     
@@ -45,7 +45,7 @@ describe("Simple Coverage Test", function () {
       "HYRA",
       ethers.parseEther("1000000"),
       alice.address, 
-      await timelock.getAddress()
+      owner.address
     ]);
 
     const HyraTransparentUpgradeableProxy = await ethers.getContractFactory("HyraTransparentUpgradeableProxy");
@@ -110,24 +110,24 @@ describe("Simple Coverage Test", function () {
     });
 
     it("should handle pause/unpause", async function () {
-      const { token, timelock } = await loadFixture(deploySimpleContracts);
+      const { token, owner } = await loadFixture(deploySimpleContracts);
 
       
-      await token.connect(timelock).pause();
+      await token.connect(owner).pause();
       expect(await token.paused()).to.be.true;
 
       
-      await token.connect(timelock).unpause();
+      await token.connect(owner).unpause();
       expect(await token.paused()).to.be.false;
     });
 
     it("should handle mint requests", async function () {
-      const { token, timelock, alice } = await loadFixture(deploySimpleContracts);
+      const { token, owner, alice } = await loadFixture(deploySimpleContracts);
 
       const mintAmount = ethers.parseEther("1000000");
       
       
-      const tx = await token.connect(timelock).createMintRequest(
+      const tx = await token.connect(owner).createMintRequest(
         alice.address,
         mintAmount,
         "Test mint request"
@@ -138,7 +138,7 @@ describe("Simple Coverage Test", function () {
     });
 
     it("should handle year transitions", async function () {
-      const { token, timelock, alice } = await loadFixture(deploySimpleContracts);
+      const { token, owner, alice } = await loadFixture(deploySimpleContracts);
 
       const YEAR_DURATION = 365 * 24 * 60 * 60;
       
@@ -146,7 +146,7 @@ describe("Simple Coverage Test", function () {
       await time.increase(YEAR_DURATION + 1);
       
       
-      await token.connect(timelock).createMintRequest(
+      await token.connect(owner).createMintRequest(
         alice.address,
         ethers.parseEther("1000"),
         "Year transition test"
@@ -157,12 +157,12 @@ describe("Simple Coverage Test", function () {
     });
 
     it("should enforce mint caps", async function () {
-      const { token, timelock, alice } = await loadFixture(deploySimpleContracts);
+      const { token, owner, alice } = await loadFixture(deploySimpleContracts);
 
       const excessiveAmount = ethers.parseEther("3000000000"); 
 
       await expect(
-        token.connect(timelock).createMintRequest(
+        token.connect(owner).createMintRequest(
           alice.address,
           excessiveAmount,
           "Excessive mint request"
@@ -190,13 +190,13 @@ describe("Simple Coverage Test", function () {
       const delay = 86400;
 
       
-      await timelock.connect(voter1).schedule(target, value, data, salt, delay);
+      await timelock.connect(voter1).schedule(target, value, data, ethers.ZeroHash, salt, delay);
       
       
       const operationId = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["address", "uint256", "bytes", "bytes32", "uint256"],
-          [target, value, data, salt, delay]
+          ["address", "uint256", "bytes", "bytes32", "bytes32"],
+          [target, value, data, ethers.ZeroHash, salt]
         )
       );
       
@@ -233,10 +233,10 @@ describe("Simple Coverage Test", function () {
     });
 
     it("should handle invalid mint amounts", async function () {
-      const { token, timelock, alice } = await loadFixture(deploySimpleContracts);
+      const { token, owner, alice } = await loadFixture(deploySimpleContracts);
 
       await expect(
-        token.connect(timelock).createMintRequest(
+        token.connect(owner).createMintRequest(
           alice.address,
           0,
           "Zero amount mint"
@@ -245,10 +245,10 @@ describe("Simple Coverage Test", function () {
     });
 
     it("should handle zero address mint requests", async function () {
-      const { token, timelock } = await loadFixture(deploySimpleContracts);
+      const { token, owner } = await loadFixture(deploySimpleContracts);
 
       await expect(
-        token.connect(timelock).createMintRequest(
+        token.connect(owner).createMintRequest(
           ethers.ZeroAddress,
           ethers.parseEther("1000"),
           "Zero address mint"
@@ -271,7 +271,7 @@ describe("Simple Coverage Test", function () {
     });
 
     it("should handle multiple year transitions", async function () {
-      const { token, timelock, alice } = await loadFixture(deploySimpleContracts);
+      const { token, owner, alice } = await loadFixture(deploySimpleContracts);
 
       const YEAR_DURATION = 365 * 24 * 60 * 60;
       
@@ -279,7 +279,7 @@ describe("Simple Coverage Test", function () {
       await time.increase(YEAR_DURATION * 2 + 1);
       
       
-      await token.connect(timelock).createMintRequest(
+      await token.connect(owner).createMintRequest(
         alice.address,
         ethers.parseEther("1000"),
         "Multiple year transition test"
@@ -290,14 +290,16 @@ describe("Simple Coverage Test", function () {
     });
 
     it("should handle boundary conditions", async function () {
-      const { token, timelock, alice } = await loadFixture(deploySimpleContracts);
+      const { token, owner, alice } = await loadFixture(deploySimpleContracts);
 
       
       const annualCap = ethers.parseEther("2500000000"); 
+      // Remaining capacity in year 1 is annualCap - initialSupply (1,000,000)
+      const requestAmount = annualCap - ethers.parseEther("1000000");
       
-      const tx = await token.connect(timelock).createMintRequest(
+      const tx = await token.connect(owner).createMintRequest(
         alice.address,
-        annualCap,
+        requestAmount,
         "Full annual cap mint"
       );
       

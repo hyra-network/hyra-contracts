@@ -12,15 +12,15 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     await timelockImplementation.waitForDeployment();
 
     // Setup role arrays
-    const proposers = [proposer1.getAddress()];
-    const executors = [executor1.getAddress()];
+    const proposers = [await proposer1.getAddress()];
+    const executors = [await executor1.getAddress()];
 
     // Create proxy and initialize timelock
     const initData = HyraTimelock.interface.encodeFunctionData("initialize", [
       86400, // 1 day delay
       proposers,
       executors,
-      owner.getAddress()
+      await owner.getAddress()
     ]);
 
     const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
@@ -49,8 +49,8 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
       "Test Token",
       "TEST",
       ethers.parseEther("1000000"),
-      alice.getAddress(),
-      bob.getAddress()
+      await alice.getAddress(),
+      await bob.getAddress()
     ]);
 
     const tokenProxy = await HyraTransparentUpgradeableProxy.deploy(
@@ -89,9 +89,14 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
       owner
     } = await loadFixture(deployTestContracts);
 
-    // Add proxy to proxy admin management first
-    await proxyAdmin.connect(owner).addProxy(await tokenProxy.getAddress(), "Test Token");
-    
+    // Add proxy to proxy admin management via timelock
+    const addData = proxyAdmin.interface.encodeFunctionData("addProxy", [await tokenProxy.getAddress(), "Test Token"]);
+    const salt = ethers.keccak256(ethers.toUtf8Bytes("add-proxy"));
+    const delay = 86400;
+    await timelock.connect(proposer1)["schedule(address,uint256,bytes,bytes32,bytes32,uint256)"](await proxyAdmin.getAddress(), 0, addData, ethers.ZeroHash, salt, delay);
+    await time.increase(delay + 1);
+    await timelock.connect(executor1)["execute(address,uint256,bytes,bytes32,bytes32)"](await proxyAdmin.getAddress(), 0, addData, ethers.ZeroHash, salt);
+
     // Schedule upgrade
     await timelock.connect(proposer1).scheduleUpgrade(
       await tokenProxy.getAddress(),
@@ -133,18 +138,25 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     expect(currentImplementation).to.equal(await tokenImplementation.getAddress());
   });
 
-  it("should allow HyraProxyAdmin to upgrade the proxy directly", async function () {
-    const { proxyAdmin, tokenProxy, newTokenImplementation, owner } = await loadFixture(deployTestContracts);
+  it("should allow upgrade execution via timelock using HyraProxyAdmin", async function () {
+    const { timelock, proxyAdmin, tokenProxy, newTokenImplementation, proposer1, executor1 } = await loadFixture(deployTestContracts);
 
-    // Add proxy to management (owner can do this directly)
-    await proxyAdmin.connect(owner).connect(owner).addProxy(await tokenProxy.getAddress(), "Test Token");
+    // Schedule upgrade
+    await timelock.connect(proposer1).scheduleUpgrade(
+      await tokenProxy.getAddress(),
+      await newTokenImplementation.getAddress(),
+      "0x",
+      false
+    );
 
-    // Directly upgrade through HyraProxyAdmin
+    // Fast forward past delay (7 days)
+    await time.increase(7 * 24 * 60 * 60 + 1);
+
+    // Execute upgrade
     await expect(
-      proxyAdmin.connect(owner).connect(owner).upgradeAndCall(
-        await tokenProxy.getAddress(),
-        await newTokenImplementation.getAddress(),
-        "0x"
+      timelock.connect(executor1).executeUpgrade(
+        await proxyAdmin.getAddress(),
+        await tokenProxy.getAddress()
       )
     ).to.not.be.reverted;
 
@@ -182,8 +194,8 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
       "Deployed Token",
       "DEPLOY",
       ethers.parseEther("1000000"),
-      alice.getAddress(),
-      bob.getAddress()
+      await alice.getAddress(),
+      await bob.getAddress()
     ]);
 
     const tx = await proxyDeployer.deployProxy(
@@ -199,7 +211,7 @@ describe("HNA-05 Fix: TransparentUpgradeableProxy Compatibility", function () {
     const receipt = await tx.wait();
     const event = receipt?.logs.find(log => {
       try {
-        const parsed = proxyDeployer.interface.interface.parseLog(log);
+        const parsed = HyraProxyDeployer.interface.parseLog(log);
         return parsed?.name === "ProxyDeployed";
       } catch {
         return false;

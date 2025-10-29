@@ -1,5 +1,6 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
+import { mine } from "@nomicfoundation/hardhat-network-helpers";
 import { HyraToken, HyraGovernor, HyraTimelock } from "../typechain-types";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
@@ -32,47 +33,51 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
     beforeEach(async function () {
         [owner, voter1, voter2, voter3] = await ethers.getSigners();
 
-        // Deploy HyraToken
+        // Deploy HyraToken via ERC1967Proxy (initializeLegacy)
         const HyraTokenFactory = await ethers.getContractFactory("HyraToken");
-        token = await upgrades.deployProxy(
-            HyraTokenFactory,
-            [
-                "Hyra Token",
-                "HYRA",
-                ethers.parseEther("10000000"), // 10M initial supply
-                owner.address,
-                owner.address
-            ],
-            { initializer: "initializeLegacy" }
-        ) as any;
+        const tokenImpl = await HyraTokenFactory.deploy();
+        await tokenImpl.waitForDeployment();
+        const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initializeLegacy", [
+            "Hyra Token",
+            "HYRA",
+            ethers.parseEther("10000000"),
+            await owner.getAddress(),
+            await owner.getAddress(),
+        ]);
+        const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+        const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit);
+        await tokenProxy.waitForDeployment();
+        token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
 
-        // Deploy HyraTimelock
+        // Deploy HyraTimelock via ERC1967Proxy (initialize)
         const HyraTimelockFactory = await ethers.getContractFactory("HyraTimelock");
-        timelock = await upgrades.deployProxy(
-            HyraTimelockFactory,
-            [
-                2 * 24 * 60 * 60, // 2 days min delay
-                [],
-                [],
-                owner.address
-            ],
-            { initializer: "initialize" }
-        ) as any;
+        const tlImpl = await HyraTimelockFactory.deploy();
+        await tlImpl.waitForDeployment();
+        const tlInit = HyraTimelockFactory.interface.encodeFunctionData("initialize", [
+            2 * 24 * 60 * 60,
+            [],
+            [],
+            await owner.getAddress(),
+        ]);
+        const tlProxy = await ERC1967Proxy.deploy(await tlImpl.getAddress(), tlInit);
+        await tlProxy.waitForDeployment();
+        timelock = await ethers.getContractAt("HyraTimelock", await tlProxy.getAddress());
 
-        // Deploy HyraGovernor
+        // Deploy HyraGovernor via ERC1967Proxy (initialize)
         const HyraGovernorFactory = await ethers.getContractFactory("HyraGovernor");
-        governor = await upgrades.deployProxy(
-            HyraGovernorFactory,
-            [
-                await token.getAddress(),
-                await timelock.getAddress(),
-                VOTING_DELAY,
-                VOTING_PERIOD,
-                PROPOSAL_THRESHOLD,
-                QUORUM_PERCENTAGE
-            ],
-            { initializer: "initialize" }
-        ) as any;
+        const govImpl = await HyraGovernorFactory.deploy();
+        await govImpl.waitForDeployment();
+        const govInit = HyraGovernorFactory.interface.encodeFunctionData("initialize", [
+            await token.getAddress(),
+            await timelock.getAddress(),
+            VOTING_DELAY,
+            VOTING_PERIOD,
+            PROPOSAL_THRESHOLD,
+            QUORUM_PERCENTAGE,
+        ]);
+        const govProxy = await ERC1967Proxy.deploy(await govImpl.getAddress(), govInit);
+        await govProxy.waitForDeployment();
+        governor = await ethers.getContractAt("HyraGovernor", await govProxy.getAddress());
 
         // Setup roles
         const PROPOSER_ROLE = await timelock.PROPOSER_ROLE();
@@ -84,14 +89,14 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
         await timelock.grantRole(CANCELLER_ROLE, await governor.getAddress());
 
         // Distribute tokens to voters
-        await token.transfer(voter1.address, ethers.parseEther("2000000")); // 2M - 20% of supply
-        await token.transfer(voter2.address, ethers.parseEther("1000000")); // 1M - 10% of supply  
-        await token.transfer(voter3.address, ethers.parseEther("500000"));  // 500K - 5% of supply
+        await token.transfer(await voter1.getAddress(), ethers.parseEther("2000000")); // 2M
+        await token.transfer(await voter2.getAddress(), ethers.parseEther("1000000")); // 1M
+        await token.transfer(await voter3.getAddress(), ethers.parseEther("500000"));  // 500K
 
         // Delegate voting power
-        await token.connect(voter1).delegate(voter1.address);
-        await token.connect(voter2).delegate(voter2.address);
-        await token.connect(voter3).delegate(voter3.address);
+        await token.connect(voter1).delegate(await voter1.getAddress());
+        await token.connect(voter2).delegate(await voter2.getAddress());
+        await token.connect(voter3).delegate(await voter3.getAddress());
 
         // Mine a block to make voting power active
         await time.increase(1);
@@ -105,7 +110,7 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             const calldatas = [token.interface.encodeFunctionData("pause", [])];
             const description = "Test proposal for quorum bug verification";
 
-            const tx = await governor.propose(targets, values, calldatas, description);
+            const tx = await governor.connect(voter1).propose(targets, values, calldatas, description);
             const receipt = await tx.wait();
             const event = receipt?.logs.find((log: any) => {
                 try {
@@ -120,8 +125,8 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
                 proposalId = parsed?.args[0];
             }
 
-            // Wait for voting to start
-            await time.increase(VOTING_DELAY + 1);
+            // Wait for voting to start (block-based governor)
+            await mine(VOTING_DELAY + 1);
         });
 
         it("Should correctly calculate quorum with only AGAINST votes (should NOT reach quorum)", async function () {
@@ -160,8 +165,8 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             // and quorum would incorrectly pass (2M > 1M required)
             // After fix: quorum should NOT be reached (0 for + 0 abstain < 1M required)
             
-            // Move past voting period
-            await time.increase(VOTING_PERIOD + 1);
+            // Move past voting period (blocks)
+            await mine(VOTING_PERIOD + 2);
             
             const finalState = await governor.state(proposalId);
             console.log("  Final state:", finalState);
@@ -208,8 +213,8 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             console.log("  Total voting power (for + abstain):", ethers.formatEther(totalVotingPower));
             console.log("  Quorum reached:", totalVotingPower >= requiredQuorum);
 
-            // Move past voting period
-            await time.increase(VOTING_PERIOD + 1);
+            // Move past voting period (blocks)
+            await mine(VOTING_PERIOD + 2);
             
             const finalState = await governor.state(proposalId);
             console.log("  Final state:", finalState);
@@ -294,8 +299,8 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             );
             expect(quorumVotes).to.be.greaterThan(requiredQuorum, "Quorum should be reached");
 
-            // Move past voting period
-            await time.increase(VOTING_PERIOD + 1);
+            // Move past voting period (blocks)
+            await mine(VOTING_PERIOD + 2);
             
             const finalState = await governor.state(proposalId);
             
@@ -326,7 +331,7 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             // Should exactly meet quorum
             expect(quorumVotes).to.be.greaterThanOrEqual(requiredQuorum, "Should meet quorum");
 
-            await time.increase(VOTING_PERIOD + 1);
+            await mine(VOTING_PERIOD + 2);
             const finalState = await governor.state(proposalId);
             
             // Should succeed with exactly at quorum
@@ -342,7 +347,7 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             const values = [0];
             const calldatas = [token.interface.encodeFunctionData("pause", [])];
             
-            const tx = await governor.propose(targets, values, calldatas, "Test FOR votes");
+            const tx = await governor.connect(voter1).propose(targets, values, calldatas, "Test FOR votes");
             const receipt = await tx.wait();
             const event = receipt?.logs.find((log: any) => {
                 try {
@@ -377,7 +382,7 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             const values = [0];
             const calldatas = [token.interface.encodeFunctionData("pause", [])];
             
-            const tx = await governor.propose(targets, values, calldatas, "Test ABSTAIN votes");
+            const tx = await governor.connect(voter1).propose(targets, values, calldatas, "Test ABSTAIN votes");
             const receipt = await tx.wait();
             const event = receipt?.logs.find((log: any) => {
                 try {

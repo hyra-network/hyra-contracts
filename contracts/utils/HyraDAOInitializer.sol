@@ -108,12 +108,27 @@ contract HyraDAOInitializer {
         address[] memory initialExecutors = new address[](1);
         initialExecutors[0] = address(this); // Temporary executor
         
-        result.executorManager = address(new SecureExecutorManager());
-        SecureExecutorManager(result.executorManager).initialize(address(this), initialExecutors);
+        result.executorManager = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
+            address(new SecureExecutorManager()),
+            result.proxyAdmin,
+            abi.encodeWithSelector(
+                SecureExecutorManager.initialize.selector,
+                address(this),
+                initialExecutors
+            ),
+            "EXECUTOR_MANAGER"
+        );
         
         // 2.2 Deploy ProxyAdminValidator
-        result.proxyAdminValidator = address(new ProxyAdminValidator());
-        ProxyAdminValidator(result.proxyAdminValidator).initialize(address(this));
+        result.proxyAdminValidator = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
+            address(new ProxyAdminValidator()),
+            result.proxyAdmin,
+            abi.encodeWithSelector(
+                ProxyAdminValidator.initialize.selector,
+                address(this)
+            ),
+            "PROXY_ADMIN_VALIDATOR"
+        );
         
         // 3. Deploy Timelock implementation
         result.timelockImplementation = address(new HyraTimelock());
@@ -173,13 +188,14 @@ contract HyraDAOInitializer {
             "TOKEN"
         );
         
-        // 9. Initialize Vesting contract with token address
-        ITokenVesting(result.vestingProxy).initialize(result.tokenProxy, result.timelockProxy);
+        // 9. Initialize Vesting contract with token address (temporary owner = initializer)
+        ITokenVesting(result.vestingProxy).initialize(result.tokenProxy, address(this));
         
         // 10. Deploy Governor implementation
         result.governorImplementation = address(new HyraGovernor());
         
         // 11. Deploy Governor proxy
+        uint256 quorumArg = config.quorumPercentage > 100 ? config.quorumPercentage / 100 : config.quorumPercentage;
         bytes memory governorInitData = abi.encodeWithSelector(
             HyraGovernor.initialize.selector,
             IVotes(result.tokenProxy),
@@ -187,7 +203,7 @@ contract HyraDAOInitializer {
             config.votingDelay,
             config.votingPeriod,
             config.proposalThreshold,
-            config.quorumPercentage
+            quorumArg
         );
         
         result.governorProxy = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
@@ -197,15 +213,14 @@ contract HyraDAOInitializer {
             "GOVERNOR"
         );
         
-        // FIXED: Apply Checks-Effects-Interactions pattern
-        // 12. Configure roles and setup executor manager
-        _configureRoles(result, config);
-        
-        // 12.1 Setup executor manager and proxy admin validator in timelock
+        // 12. Setup executor manager and proxy admin validator in timelock (requires admin privileges)
         HyraTimelock(payable(result.timelockProxy)).setExecutorManager(SecureExecutorManager(result.executorManager));
         HyraTimelock(payable(result.timelockProxy)).setProxyAdminValidator(ProxyAdminValidator(result.proxyAdminValidator));
-        
-        // 12.2 Authorize the deployed proxy admin in the validator
+
+        // 12.1 Configure roles (grants to governor, executor manager, council; then revokes/renounces temporary roles)
+        _configureRoles(result, config);
+
+        // 12.2 Authorize the deployed proxy admin in the validator (initializer still has validator role)
         ProxyAdminValidator(result.proxyAdminValidator).authorizeProxyAdmin(
             result.proxyAdmin,
             "HyraDAO SecureProxyAdmin",
@@ -215,6 +230,8 @@ contract HyraDAOInitializer {
         
         // 13. Setup vesting schedules
         _setupVestingSchedules(result, config);
+        // 13.1 Transfer vesting ownership to Timelock after setup
+        TokenVesting(result.vestingProxy).transferOwnership(result.timelockProxy);
         
         // 14. Add proxies to SecureProxyAdmin
         SecureProxyAdmin(result.proxyAdmin).addProxy(result.tokenProxy, "HyraToken");
@@ -222,8 +239,22 @@ contract HyraDAOInitializer {
         SecureProxyAdmin(result.proxyAdmin).addProxy(result.timelockProxy, "HyraTimelock");
         SecureProxyAdmin(result.proxyAdmin).addProxy(result.vestingProxy, "TokenVesting");
         
+        // 14.1 Grant SecureProxyAdmin roles to timelock so DAO can manage upgrades
+        {
+            SecureProxyAdmin spa = SecureProxyAdmin(result.proxyAdmin);
+            bytes32 ADMIN = spa.DEFAULT_ADMIN_ROLE();
+            bytes32 GOV = spa.GOVERNANCE_ROLE();
+            bytes32 MULTI = spa.MULTISIG_ROLE();
+            spa.grantRole(ADMIN, result.timelockProxy);
+            spa.grantRole(GOV, result.timelockProxy);
+            spa.grantRole(MULTI, result.timelockProxy);
+        }
+        
         // 15. Transfer SecureProxyAdmin ownership to Timelock
         SecureProxyAdmin(result.proxyAdmin).transferOwnership(result.timelockProxy);
+        
+        // 16. Handover admin roles for security contracts from initializer to timelock
+        _handoverSecurityContracts(result);
         
         // FIXED: Emit event after all external calls are complete
         emit DAODeployed(msg.sender, result, block.timestamp);
@@ -266,8 +297,49 @@ contract HyraDAOInitializer {
             // through governance proposal after deployment as governor is owned by timelock
         }
         
-        // Renounce admin role from deployer
-        timelock.renounceRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        // Revoke temporary roles granted to initializer during timelock initialization
+        timelock.revokeRole(PROPOSER_ROLE, address(this));
+        timelock.revokeRole(EXECUTOR_ROLE, address(this));
+        
+        // Renounce admin role from initializer after cleanup
+        timelock.renounceRole(DEFAULT_ADMIN_ROLE, address(this));
+    }
+
+    /**
+     * @notice Transfer admin control of security contracts to the timelock and renounce from initializer
+     */
+    function _handoverSecurityContracts(DeploymentResult memory result) private {
+        // SecureExecutorManager role handover
+        SecureExecutorManager sem = SecureExecutorManager(result.executorManager);
+        bytes32 SEM_ADMIN = sem.DEFAULT_ADMIN_ROLE();
+        bytes32 SEM_MANAGER = sem.MANAGER_ROLE();
+        bytes32 SEM_EMERGENCY = sem.EMERGENCY_ROLE();
+
+        // Grant timelock full control
+        sem.grantRole(SEM_ADMIN, result.timelockProxy);
+        sem.grantRole(SEM_MANAGER, result.timelockProxy);
+        sem.grantRole(SEM_EMERGENCY, result.timelockProxy);
+
+        // Optional: keep initializer as an authorized executor until DAO adds others via governance
+        // Do NOT remove initializer executor here to avoid locking execution if none exists yet
+
+        // Renounce initializer privileges
+        sem.renounceRole(SEM_MANAGER, address(this));
+        sem.renounceRole(SEM_EMERGENCY, address(this));
+        sem.renounceRole(SEM_ADMIN, address(this));
+
+        // ProxyAdminValidator role handover
+        ProxyAdminValidator pav = ProxyAdminValidator(result.proxyAdminValidator);
+        bytes32 PAV_ADMIN = pav.DEFAULT_ADMIN_ROLE();
+        bytes32 PAV_VALIDATOR = pav.VALIDATOR_ROLE();
+
+        // Grant timelock control
+        pav.grantRole(PAV_ADMIN, result.timelockProxy);
+        pav.grantRole(PAV_VALIDATOR, result.timelockProxy);
+
+        // Renounce initializer roles
+        pav.renounceRole(PAV_VALIDATOR, address(this));
+        pav.renounceRole(PAV_ADMIN, address(this));
     }
     
     /**
