@@ -400,14 +400,14 @@ contract HyraGovernor is
 
     // ============ Overrides Required for OpenZeppelin v5 ============
 
-    function quorum(uint256 /* timepoint */) 
+    function quorum(uint256 timepoint) 
         public 
         view 
         override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable, IGovernor) 
         returns (uint256) 
     {
-        // Use base quorum for general cases
-        return super.quorum(block.number);
+        // Use the provided timepoint to compute past quorum correctly
+        return super.quorum(timepoint);
     }
 
     /**

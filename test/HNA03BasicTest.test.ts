@@ -12,20 +12,73 @@ describe("HNA-03 Basic Security Test", function () {
         [owner, signer1, signer2, attacker] = await ethers.getSigners();
     });
 
+    async function deployRoleManagerProxy(admin: string) {
+        const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
+        const proxyAdmin = await ProxyAdmin.deploy(admin);
+        await proxyAdmin.waitForDeployment();
+
+        const ProxyDeployer = await ethers.getContractFactory("HyraProxyDeployer");
+        const proxyDeployer = await ProxyDeployer.deploy();
+        await proxyDeployer.waitForDeployment();
+
+        const Impl = await ethers.getContractFactory("MultiSigRoleManager");
+        const impl = await Impl.deploy();
+        await impl.waitForDeployment();
+
+        const initData = Impl.interface.encodeFunctionData("initialize", [admin]);
+        const proxyAddr = await proxyDeployer.deployProxy.staticCall(
+            await impl.getAddress(),
+            await proxyAdmin.getAddress(),
+            initData,
+            "MultiSigRoleManager"
+        );
+        await (await proxyDeployer.deployProxy(
+            await impl.getAddress(),
+            await proxyAdmin.getAddress(),
+            initData,
+            "MultiSigRoleManager"
+        )).wait();
+        return await ethers.getContractAt("MultiSigRoleManager", proxyAddr);
+    }
+
+    async function deployTimeLockActionsProxy(roleManagerAddr: string) {
+        const [deployer] = await ethers.getSigners();
+        const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
+        const proxyAdmin = await ProxyAdmin.deploy(deployer.address);
+        await proxyAdmin.waitForDeployment();
+
+        const ProxyDeployer = await ethers.getContractFactory("HyraProxyDeployer");
+        const proxyDeployer = await ProxyDeployer.deploy();
+        await proxyDeployer.waitForDeployment();
+
+        const Impl = await ethers.getContractFactory("TimeLockActions");
+        const impl = await Impl.deploy();
+        await impl.waitForDeployment();
+
+        const initData = Impl.interface.encodeFunctionData("initialize", [roleManagerAddr]);
+        const proxyAddr = await proxyDeployer.deployProxy.staticCall(
+            await impl.getAddress(),
+            await proxyAdmin.getAddress(),
+            initData,
+            "TimeLockActions"
+        );
+        await (await proxyDeployer.deployProxy(
+            await impl.getAddress(),
+            await proxyAdmin.getAddress(),
+            initData,
+            "TimeLockActions"
+        )).wait();
+        return await ethers.getContractAt("TimeLockActions", proxyAddr);
+    }
+
     describe("MultiSigRoleManager Basic Tests", function () {
         it("Should deploy MultiSigRoleManager successfully", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            
-            // Contract should deploy without errors
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
             expect(await roleManager.getAddress()).to.not.equal(ethers.ZeroAddress);
         });
 
         it("Should initialize MultiSigRoleManager successfully", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            
-            await roleManager.initialize(owner.getAddress());
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
             
             // Check that owner has admin role
             const DEFAULT_ADMIN_ROLE = await roleManager.DEFAULT_ADMIN_ROLE();
@@ -33,9 +86,7 @@ describe("HNA-03 Basic Security Test", function () {
         });
 
         it("Should configure role with multi-signature requirements", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            await roleManager.initialize(owner.getAddress());
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
 
             const GOVERNANCE_ROLE = ethers.keccak256(ethers.toUtf8Bytes("GOVERNANCE_ROLE"));
             
@@ -51,9 +102,7 @@ describe("HNA-03 Basic Security Test", function () {
         });
 
         it("Should prevent unauthorized role configuration", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            await roleManager.initialize(owner.getAddress());
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
 
             const GOVERNANCE_ROLE = ethers.keccak256(ethers.toUtf8Bytes("GOVERNANCE_ROLE"));
             
@@ -69,21 +118,14 @@ describe("HNA-03 Basic Security Test", function () {
 
     describe("TimeLockActions Basic Tests", function () {
         it("Should deploy TimeLockActions successfully", async function () {
-            const TimeLockActionsFactory = await ethers.getContractFactory("TimeLockActions");
-            const timeLockActions = await TimeLockActionsFactory.deploy();
-            
-            // Contract should deploy without errors
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
+            const timeLockActions = await deployTimeLockActionsProxy(await roleManager.getAddress());
             expect(await timeLockActions.getAddress()).to.not.equal(ethers.ZeroAddress);
         });
 
         it("Should initialize TimeLockActions successfully", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            await roleManager.initialize(owner.getAddress());
-
-            const TimeLockActionsFactory = await ethers.getContractFactory("TimeLockActions");
-            const timeLockActions = await TimeLockActionsFactory.deploy();
-            await timeLockActions.initialize(await roleManager.getAddress());
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
+            const timeLockActions = await deployTimeLockActionsProxy(await roleManager.getAddress());
             
             // Should initialize without errors
             expect(await timeLockActions.getAddress()).to.not.equal(ethers.ZeroAddress);
@@ -92,9 +134,7 @@ describe("HNA-03 Basic Security Test", function () {
 
     describe("Security Benefits Verification", function () {
         it("Should demonstrate multi-signature security", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            await roleManager.initialize(owner.getAddress());
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
 
             const GOVERNANCE_ROLE = ethers.keccak256(ethers.toUtf8Bytes("GOVERNANCE_ROLE"));
             
@@ -107,7 +147,7 @@ describe("HNA-03 Basic Security Test", function () {
 
             const actionData = ethers.AbiCoder.defaultAbiCoder().encode(
                 ["address", "string"],
-                [signer1.getAddress(), "test"]
+                [await signer1.getAddress(), "test"]
             );
 
             // Propose action
@@ -124,16 +164,14 @@ describe("HNA-03 Basic Security Test", function () {
             // Add second signature
             await roleManager.connect(signer2).signAction(actionHash);
 
-            // Now should be able to execute
+            // After second signature, action auto-executes in signAction; executing again should fail
             await expect(
                 roleManager.connect(signer1).executeAction(actionHash)
-            ).to.not.be.reverted;
+            ).to.be.reverted;
         });
 
         it("Should prevent single point of failure attacks", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            await roleManager.initialize(owner.getAddress());
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
 
             const GOVERNANCE_ROLE = ethers.keccak256(ethers.toUtf8Bytes("GOVERNANCE_ROLE"));
             
@@ -147,7 +185,7 @@ describe("HNA-03 Basic Security Test", function () {
             // Simulate attacker trying to take control
             const maliciousActionData = ethers.AbiCoder.defaultAbiCoder().encode(
                 ["address", "string"],
-                [attacker.getAddress(), "takeover"]
+                [await attacker.getAddress(), "takeover"]
             );
 
             // Attacker cannot propose action without proper role
@@ -157,9 +195,7 @@ describe("HNA-03 Basic Security Test", function () {
         });
 
         it("Should prevent compromised signer from acting alone", async function () {
-            const MultiSigRoleManagerFactory = await ethers.getContractFactory("MultiSigRoleManager");
-            const roleManager = await MultiSigRoleManagerFactory.deploy();
-            await roleManager.initialize(owner.getAddress());
+            const roleManager = await deployRoleManagerProxy(await owner.getAddress());
 
             const GOVERNANCE_ROLE = ethers.keccak256(ethers.toUtf8Bytes("GOVERNANCE_ROLE"));
             
@@ -172,7 +208,7 @@ describe("HNA-03 Basic Security Test", function () {
 
             const maliciousActionData = ethers.AbiCoder.defaultAbiCoder().encode(
                 ["address", "string"],
-                [attacker.getAddress(), "malicious"]
+                [await attacker.getAddress(), "malicious"]
             );
 
             // Even if signer1 is compromised, they can propose action

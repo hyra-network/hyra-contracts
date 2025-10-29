@@ -11,9 +11,9 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
   let beneficiary1: SignerWithAddress;
   let beneficiary2: SignerWithAddress;
 
-  const INITIAL_SUPPLY = ethers.utils.parseEther("2500000000"); // 2.5B tokens
-  const VESTING_AMOUNT_1 = ethers.utils.parseEther("500000000"); // 500M tokens
-  const VESTING_AMOUNT_2 = ethers.utils.parseEther("300000000"); // 300M tokens
+  const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5B tokens
+  const VESTING_AMOUNT_1 = ethers.parseEther("500000000"); // 500M tokens
+  const VESTING_AMOUNT_2 = ethers.parseEther("300000000"); // 300M tokens
 
   async function deploySecureSystemFixture() {
     const [deployer, ownerAddr, beneficiary1Addr, beneficiary2Addr] = await ethers.getSigners();
@@ -24,7 +24,7 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     await proxyDeployer.waitForDeployment();
     
     const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.getAddress());
+    const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
     await proxyAdmin.waitForDeployment();
     
     // Deploy TokenVesting
@@ -32,10 +32,7 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     const vestingImpl = await TokenVesting.deploy();
     await vestingImpl.waitForDeployment();
     
-    const vestingInit = TokenVesting.interface.encodeFunctionData("initialize", [
-      ethers.ZeroAddress, // Will be set after token deployment
-      ownerAddr.getAddress()
-    ]);
+    const vestingInit = "0x"; // Defer initialization until token is deployed
     
     const vestingProxy = await proxyDeployer.deployProxy.staticCall(
       await vestingImpl.getAddress(),
@@ -63,7 +60,7 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
       "HYRA-S",
       INITIAL_SUPPLY,
       vestingProxy, // Use vesting contract instead of single holder
-      ownerAddr.getAddress() // governance
+      await ownerAddr.getAddress() // governance
     ]);
     
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
@@ -82,8 +79,8 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     
     const tokenContract = await ethers.getContractAt("HyraToken", tokenProxy);
     
-    // Initialize vesting contract with token address
-    await vestingContract.initialize(tokenProxy, ownerAddr.getAddress());
+    // Initialize vesting contract now that token address is known
+    await vestingContract.initialize(tokenProxy, await ownerAddr.getAddress());
     
     return {
       token: tokenContract,
@@ -114,7 +111,8 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     });
 
     it("Should create secure vesting schedules", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest = await ethers.provider.getBlock("latest");
+      const startTime = latest!.timestamp + 1000;
       const duration = 365 * 24 * 60 * 60; // 1 year
       const cliff = 30 * 24 * 60 * 60; // 30 days
       
@@ -156,7 +154,8 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     });
 
     it("Should prevent immediate token access (cliff protection)", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest2 = await ethers.provider.getBlock("latest");
+      const startTime = latest2!.timestamp + 1000;
       const duration = 365 * 24 * 60 * 60; // 1 year
       const cliff = 30 * 24 * 60 * 60; // 30 days
       
@@ -174,16 +173,16 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
       const receipt = await tx.wait();
       const event = receipt?.logs.find(log => {
         try {
-          const decoded = vesting.interface.interface.parseLog(log);
-          return decoded?.name === "VestingScheduleCreated";
+          const parsed = vesting.interface.parseLog(log);
+          return parsed?.name === "VestingScheduleCreated";
         } catch {
           return false;
         }
       });
       
       if (event) {
-        const decoded = vesting.interface.interface.parseLog(event);
-        const vestingScheduleId = decoded?.args[0];
+        const parsed = vesting.interface.parseLog(event);
+        const vestingScheduleId = parsed?.args[0];
         
         // Try to release before cliff (should fail)
         await expect(
@@ -195,7 +194,8 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     });
 
     it("Should allow gradual token release after cliff", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest3 = await ethers.provider.getBlock("latest");
+      const startTime = latest3!.timestamp + 1000;
       const duration = 365 * 24 * 60 * 60; // 1 year
       const cliff = 30 * 24 * 60 * 60; // 30 days
       
@@ -213,16 +213,16 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
       const receipt = await tx.wait();
       const event = receipt?.logs.find(log => {
         try {
-          const decoded = vesting.interface.interface.parseLog(log);
-          return decoded?.name === "VestingScheduleCreated";
+          const parsed = vesting.interface.parseLog(log);
+          return parsed?.name === "VestingScheduleCreated";
         } catch {
           return false;
         }
       });
       
       if (event) {
-        const decoded = vesting.interface.interface.parseLog(event);
-        const vestingScheduleId = decoded?.args[0];
+        const parsed = vesting.interface.parseLog(event);
+        const vestingScheduleId = parsed?.args[0];
         
         // Wait for cliff to pass
         await time.increaseTo(startTime + cliff + (duration / 2));
@@ -245,7 +245,8 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
 
     it("Should enforce governance control", async function () {
       // Only owner can create vesting schedules
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest4 = await ethers.provider.getBlock("latest");
+      const startTime = latest4!.timestamp + 1000;
       
       await expect(
         vesting.connect(beneficiary1).createVestingSchedule(
@@ -263,7 +264,7 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     });
 
     it("Should support emergency controls", async function () {
-      const withdrawAmount = ethers.utils.parseEther("1000000");
+      const withdrawAmount = ethers.parseEther("1000000");
       const balanceBefore = await token.balanceOf(owner.getAddress());
       
       // Owner can emergency withdraw
@@ -297,8 +298,8 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
         "Hyra Token Legacy",
         "HYRA-L",
         INITIAL_SUPPLY,
-        beneficiary1.getAddress(), // Single holder (RISKY)
-        owner.getAddress()
+        await beneficiary1.getAddress(), // Single holder (RISKY)
+        await owner.getAddress()
       ]);
       
       const legacyProxy = await proxyDeployer.deployProxy.staticCall(
@@ -319,14 +320,14 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
       
       // Compare security models
       const secureBalance = await token.balanceOf(await vesting.getAddress());
-      const legacyBalance = await legacyToken.balanceOf(beneficiary1.getAddress());
+      const legacyBalance = await legacyToken.balanceOf(await beneficiary1.getAddress());
       
       expect(secureBalance).to.equal(INITIAL_SUPPLY);
       expect(legacyBalance).to.equal(INITIAL_SUPPLY);
       
       // Demonstrate the risk: legacy holder can transfer immediately
       await expect(
-        legacyToken.connect(beneficiary1).transfer(beneficiary2.getAddress(), ethers.utils.parseEther("1000000"))
+        legacyToken.connect(beneficiary1).transfer(beneficiary2.getAddress(), ethers.parseEther("1000000"))
       ).to.not.be.reverted;
       
       // Secure method: vesting contract cannot transfer without proper schedule
@@ -368,8 +369,8 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
       
       // Verify the fix is working
       expect(await token.balanceOf(await vesting.getAddress())).to.equal(INITIAL_SUPPLY);
-      expect(await token.owner()).to.equal(owner.getAddress());
-      expect(await vesting.owner()).to.equal(owner.getAddress());
+      expect(await token.owner()).to.equal(await owner.getAddress());
+      expect(await vesting.owner()).to.equal(await owner.getAddress());
     });
   });
 });

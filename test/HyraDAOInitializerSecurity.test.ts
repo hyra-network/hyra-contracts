@@ -11,9 +11,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
   let beneficiary1: SignerWithAddress;
   let beneficiary2: SignerWithAddress;
 
-  const INITIAL_SUPPLY = ethers.utils.parseEther("2500000000"); // 2.5B tokens
-  const VESTING_AMOUNT_1 = ethers.utils.parseEther("500000000"); // 500M tokens
-  const VESTING_AMOUNT_2 = ethers.utils.parseEther("300000000"); // 300M tokens
+  const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5B tokens
+  const VESTING_AMOUNT_1 = ethers.parseEther("500000000"); // 500M tokens
+  const VESTING_AMOUNT_2 = ethers.parseEther("300000000"); // 300M tokens
   const VESTING_DURATION = 365 * 24 * 60 * 60; // 1 year
   const CLIFF_DURATION = 30 * 24 * 60 * 60; // 30 days
 
@@ -45,7 +45,8 @@ describe("HyraDAOInitializer Security Fixes", function () {
 
   describe("DAO Deployment with Vesting", function () {
     it("should deploy DAO with vesting configuration", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest = await ethers.provider.getBlock("latest");
+      const startTime = latest!.timestamp + 1000;
       
       const daoConfig = {
         // Token config
@@ -69,6 +70,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
           beneficiary1.getAddress(),
           beneficiary2.getAddress()
         ],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         
         // Vesting config
         vestingConfig: {
@@ -110,19 +114,15 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const tx = await daoInitializer.deployDAO(daoConfig);
       
       await expect(tx)
-        .to.emit(daoInitializer, "DAODeployed")
-        .withArgs(
-          deployer.getAddress(),
-          await tx.then(t => t.value), // deployment result
-          await tx.then(t => t.timestamp)
-        );
+        .to.emit(daoInitializer, "DAODeployed");
       
       const receipt = await tx.wait();
       console.log("DAO deployed successfully with vesting configuration");
     });
 
     it("should validate vesting configuration", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b2 = await ethers.provider.getBlock("latest");
+      const startTime = b2!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -135,6 +135,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -151,7 +154,8 @@ describe("HyraDAOInitializer Security Fixes", function () {
     });
 
     it("should revert with invalid vesting configuration", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b3 = await ethers.provider.getBlock("latest");
+      const startTime = b3!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -164,6 +168,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1, VESTING_AMOUNT_2], // Mismatch: 1 beneficiary, 2 amounts
@@ -176,11 +183,12 @@ describe("HyraDAOInitializer Security Fixes", function () {
       };
       
       // Should revert due to array length mismatch
-      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWithCustomError("Invalid vesting config");
+      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWith("Invalid vesting config");
     });
 
     it("should revert with zero vesting contract address", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b4 = await ethers.provider.getBlock("latest");
+      const startTime = b4!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -193,6 +201,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -204,11 +215,12 @@ describe("HyraDAOInitializer Security Fixes", function () {
         }
       };
       
-      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWithCustomError("InvalidConfig");
+      await expect(daoInitializer.deployDAO(daoConfig)).to.be.revertedWithCustomError(daoInitializer, "InvalidConfig");
     });
 
     it("should revert with empty token name or symbol", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b5 = await ethers.provider.getBlock("latest");
+      const startTime = b5!.timestamp + 1000;
       
       // Empty token name
       const daoConfig1 = {
@@ -222,6 +234,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -233,7 +248,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
         }
       };
       
-      await expect(daoInitializer.deployDAO(daoConfig1)).to.be.revertedWithCustomError("InvalidConfig");
+      await expect(daoInitializer.deployDAO(daoConfig1)).to.be.revertedWithCustomError(daoInitializer, "InvalidConfig");
       
       // Empty token symbol
       const daoConfig2 = {
@@ -247,6 +262,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -258,13 +276,14 @@ describe("HyraDAOInitializer Security Fixes", function () {
         }
       };
       
-      await expect(daoInitializer.deployDAO(daoConfig2)).to.be.revertedWithCustomError("InvalidConfig");
+      await expect(daoInitializer.deployDAO(daoConfig2)).to.be.revertedWithCustomError(daoInitializer, "InvalidConfig");
     });
   });
 
   describe("Deployment Verification", function () {
     it("should verify deployment addresses", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b6 = await ethers.provider.getBlock("latest");
+      const startTime = b6!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -277,6 +296,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -294,7 +316,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       // Get the deployment result from the event
       const event = receipt?.logs.find(log => {
         try {
-          const decoded = daoInitializer.interface.interface.parseLog(log);
+          const decoded = daoInitializer.interface.parseLog(log);
           return decoded?.name === "DAODeployed";
         } catch {
           return false;
@@ -302,7 +324,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       });
       
       if (event) {
-        const decoded = daoInitializer.interface.interface.parseLog(event);
+        const decoded = daoInitializer.interface.parseLog(event);
         const deploymentResult = decoded?.args[1];
         
         // Verify all addresses are non-zero
@@ -320,7 +342,8 @@ describe("HyraDAOInitializer Security Fixes", function () {
     });
 
     it("should verify deployment using verifyDeployment function", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b7 = await ethers.provider.getBlock("latest");
+      const startTime = b7!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -333,6 +356,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -358,7 +384,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         timelockProxy: "0x7890123456789012345678901234567890123456",
         vestingProxy: "0x8901234567890123456789012345678901234567",
         proxyAdmin: "0x9012345678901234567890123456789012345678",
-        proxyDeployer: "0xa123456789012345678901234567890123456789"
+        proxyDeployer: "0xa123456789012345678901234567890123456789",
+        executorManager: "0xb123456789012345678901234567890123456789",
+        proxyAdminValidator: "0xc123456789012345678901234567890123456789"
       };
       
       // Note: This test would need actual deployment addresses to work properly
@@ -371,7 +399,8 @@ describe("HyraDAOInitializer Security Fixes", function () {
 
   describe("Security Features", function () {
     it("should include vesting contract in deployment", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b8 = await ethers.provider.getBlock("latest");
+      const startTime = b8!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -384,6 +413,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -406,7 +438,8 @@ describe("HyraDAOInitializer Security Fixes", function () {
     });
 
     it("should transfer ownership to Timelock", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b9 = await ethers.provider.getBlock("latest");
+      const startTime = b9!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -419,6 +452,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -438,7 +474,8 @@ describe("HyraDAOInitializer Security Fixes", function () {
     });
 
     it("should configure security council roles", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b10 = await ethers.provider.getBlock("latest");
+      const startTime = b10!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -455,6 +492,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
           beneficiary1.getAddress(),
           beneficiary2.getAddress()
         ],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],
@@ -478,7 +518,8 @@ describe("HyraDAOInitializer Security Fixes", function () {
       // This test ensures that the new vesting configuration doesn't break
       // existing test patterns and can work with the existing test helpers
       
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const b11 = await ethers.provider.getBlock("latest");
+      const startTime = b11!.timestamp + 1000;
       
       const daoConfig = {
         tokenName: "Hyra Token",
@@ -491,6 +532,9 @@ describe("HyraDAOInitializer Security Fixes", function () {
         proposalThreshold: 0,
         quorumPercentage: 10,
         securityCouncil: [owner.getAddress()],
+        // Multisig config
+        multisigSigners: [owner.getAddress()],
+        requiredSignatures: 1,
         vestingConfig: {
           beneficiaries: [beneficiary1.getAddress()],
           amounts: [VESTING_AMOUNT_1],

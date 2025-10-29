@@ -10,8 +10,8 @@ describe("TokenVesting - Simple Tests", function () {
   let owner: SignerWithAddress;
   let beneficiary1: SignerWithAddress;
 
-  const INITIAL_SUPPLY = ethers.utils.parseEther("1000000");
-  const VESTING_AMOUNT = ethers.utils.parseEther("100000");
+  const INITIAL_SUPPLY = ethers.parseEther("1000000");
+  const VESTING_AMOUNT = ethers.parseEther("100000");
   const VESTING_DURATION = 365 * 24 * 60 * 60; // 1 year
   const CLIFF_DURATION = 30 * 24 * 60 * 60; // 30 days
 
@@ -29,15 +29,15 @@ describe("TokenVesting - Simple Tests", function () {
     await proxyDeployer.waitForDeployment();
     
     const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(ownerAddr.getAddress());
+    const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
     await proxyAdmin.waitForDeployment();
     
     const tokenInit = Token.interface.encodeFunctionData("initialize", [
       "Test Token",
       "TEST",
       INITIAL_SUPPLY,
-      deployer.getAddress(), // initial holder
-      ownerAddr.getAddress() // governance
+      await deployer.getAddress(), // initial holder
+      await ownerAddr.getAddress() // governance
     ]);
     
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
@@ -63,7 +63,7 @@ describe("TokenVesting - Simple Tests", function () {
     
     const vestingInit = TokenVesting.interface.encodeFunctionData("initialize", [
       tokenProxy,
-      ownerAddr.getAddress()
+      await ownerAddr.getAddress()
     ]);
     
     const vestingProxy = await proxyDeployer.deployProxy.staticCall(
@@ -103,15 +103,16 @@ describe("TokenVesting - Simple Tests", function () {
 
   describe("Basic Functionality", function () {
     it("should initialize correctly", async function () {
-      expect(await tokenVesting.owner()).to.equal(owner.getAddress());
+      expect(await tokenVesting.owner()).to.equal(await owner.getAddress());
       expect(await tokenVesting.token()).to.equal(await token.getAddress());
     });
 
     it("should create vesting schedule", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest = await ethers.provider.getBlock("latest");
+      const startTime = latest!.timestamp + 1000;
       
       const tx = await tokenVesting.connect(owner).createVestingSchedule(
-        beneficiary1.getAddress(),
+        await beneficiary1.getAddress(),
         VESTING_AMOUNT,
         startTime,
         VESTING_DURATION,
@@ -127,7 +128,8 @@ describe("TokenVesting - Simple Tests", function () {
     });
 
     it("should revert if not owner", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest = await ethers.provider.getBlock("latest");
+      const startTime = latest!.timestamp + 1000;
       
       await expect(
         tokenVesting.connect(beneficiary1).createVestingSchedule(
@@ -143,7 +145,8 @@ describe("TokenVesting - Simple Tests", function () {
     });
 
     it("should revert with zero amount", async function () {
-      const startTime = Math.floor(Date.now() / 1000) + 1000;
+      const latest = await ethers.provider.getBlock("latest");
+      const startTime = latest!.timestamp + 1000;
       
       await expect(
         tokenVesting.connect(owner).createVestingSchedule(
@@ -159,20 +162,20 @@ describe("TokenVesting - Simple Tests", function () {
     });
 
     it("should allow emergency withdraw by owner", async function () {
-      const withdrawAmount = ethers.utils.parseEther("1000");
-      const balanceBefore = await token.balanceOf(owner.getAddress());
+      const withdrawAmount = ethers.parseEther("1000");
+      const balanceBefore = await token.balanceOf(await owner.getAddress());
       
       const tx = await tokenVesting.connect(owner).emergencyWithdraw(withdrawAmount);
       
       await expect(tx)
         .to.emit(tokenVesting, "EmergencyWithdraw");
       
-      const balanceAfter = await token.balanceOf(owner.getAddress());
+      const balanceAfter = await token.balanceOf(await owner.getAddress());
       expect(balanceAfter - balanceBefore).to.equal(withdrawAmount);
     });
 
     it("should revert emergency withdraw if not owner", async function () {
-      const withdrawAmount = ethers.utils.parseEther("1000");
+      const withdrawAmount = ethers.parseEther("1000");
       
       await expect(
         tokenVesting.connect(beneficiary1).emergencyWithdraw(withdrawAmount)
@@ -185,7 +188,7 @@ describe("TokenVesting - Simple Tests", function () {
     let startTime: number;
 
     beforeEach(async function () {
-      startTime = Math.floor(Date.now() / 1000) + 1000;
+      { const latest = await ethers.provider.getBlock("latest"); startTime = latest!.timestamp + 1000; }
       
       const tx = await tokenVesting.connect(owner).createVestingSchedule(
         beneficiary1.getAddress(),
@@ -201,16 +204,16 @@ describe("TokenVesting - Simple Tests", function () {
       const receipt = await tx.wait();
       const event = receipt?.logs.find(log => {
         try {
-          const decoded = tokenVesting.interface.interface.parseLog(log);
-          return decoded?.name === "VestingScheduleCreated";
+          const parsed = tokenVesting.interface.parseLog(log);
+          return parsed?.name === "VestingScheduleCreated";
         } catch {
           return false;
         }
       });
       
       if (event) {
-        const decoded = tokenVesting.interface.interface.parseLog(event);
-        vestingScheduleId = decoded?.args[0];
+        const parsed2 = tokenVesting.interface.parseLog(event);
+        vestingScheduleId = parsed2?.args[0];
       }
     });
 
@@ -218,14 +221,15 @@ describe("TokenVesting - Simple Tests", function () {
       // Before start time - should be 0
       expect(await tokenVesting.getVestedAmount(vestingScheduleId)).to.equal(0);
       
-      // After cliff but before full duration - should be proportional
+      // After cliff but before full duration - linear from start time
       await time.increaseTo(startTime + CLIFF_DURATION + (VESTING_DURATION / 2));
       
       const vestedAmount = await tokenVesting.getVestedAmount(vestingScheduleId);
-      const expectedAmount = VESTING_AMOUNT / 2n;
+      const timeElapsed = BigInt(CLIFF_DURATION) + BigInt(VESTING_DURATION / 2);
+      const expectedAmount = (VESTING_AMOUNT * timeElapsed) / BigInt(VESTING_DURATION);
       
       // Allow for small time differences
-      expect(vestedAmount).to.be.closeTo(expectedAmount, ethers.utils.parseEther("100"));
+      expect(vestedAmount).to.be.closeTo(expectedAmount, ethers.parseEther("100"));
       
       // After full duration - should be full amount
       await time.increaseTo(startTime + VESTING_DURATION + 1000);

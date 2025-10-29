@@ -1,4 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
+import * as dotenv from "dotenv";
+dotenv.config();
 import "@nomicfoundation/hardhat-toolbox";
 
 const config: HardhatUserConfig = {
@@ -10,6 +12,7 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
       evmVersion: "cancun",
+      viaIR: true,
     },
   },
   networks: {
@@ -39,11 +42,7 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: {
-      sepolia: process.env.ETHERSCAN_API_KEY || "YOUR_ETHERSCAN_API_KEY",
-      goerli: process.env.ETHERSCAN_API_KEY || "YOUR_ETHERSCAN_API_KEY",
-      mainnet: process.env.ETHERSCAN_API_KEY || "YOUR_ETHERSCAN_API_KEY",
-    },
+    apiKey: process.env.ETHERSCAN_API_KEY || "",
   },
 };
 

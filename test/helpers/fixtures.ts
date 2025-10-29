@@ -3,7 +3,7 @@ import { time, mine } from "@nomicfoundation/hardhat-network-helpers";
 
 export const NAME = "Hyra Token";
 export const SYMBOL = "HYRA";
-export const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // mint 2.5 billion tokens
+export const INITIAL_SUPPLY = ethers.parseEther("1000000"); // initial supply for core token tests
 
 export const VOTING_DELAY = 1; // blocks
 export const VOTING_PERIOD = 10; // blocks
