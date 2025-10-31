@@ -279,65 +279,7 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
       console.log("Emergency controls working - owner can withdraw if needed");
     });
 
-    it("Should demonstrate security improvement vs legacy method", async function () {
-      // Deploy legacy version for comparison
-      const Token = await ethers.getContractFactory("HyraToken");
-      const tokenImpl = await Token.deploy();
-      await tokenImpl.waitForDeployment();
-      
-      const ProxyDeployer = await ethers.getContractFactory("HyraProxyDeployer");
-      const proxyDeployer = await ProxyDeployer.deploy();
-      await proxyDeployer.waitForDeployment();
-      
-      const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-      const proxyAdmin = await ProxyAdmin.deploy(owner.getAddress());
-      await proxyAdmin.waitForDeployment();
-      
-      // Deploy with legacy method (RISKY)
-      const legacyInit = Token.interface.encodeFunctionData("initializeLegacy", [
-        "Hyra Token Legacy",
-        "HYRA-L",
-        INITIAL_SUPPLY,
-        await beneficiary1.getAddress(), // Single holder (RISKY)
-        await owner.getAddress()
-      ]);
-      
-      const legacyProxy = await proxyDeployer.deployProxy.staticCall(
-        await tokenImpl.getAddress(),
-        await proxyAdmin.getAddress(),
-        legacyInit,
-        "LEGACY"
-      );
-      
-      await (await proxyDeployer.deployProxy(
-        await tokenImpl.getAddress(),
-        await proxyAdmin.getAddress(),
-        legacyInit,
-        "LEGACY"
-      )).wait();
-      
-      const legacyToken = await ethers.getContractAt("HyraToken", legacyProxy);
-      
-      // Compare security models
-      const secureBalance = await token.balanceOf(await vesting.getAddress());
-      const legacyBalance = await legacyToken.balanceOf(await beneficiary1.getAddress());
-      
-      expect(secureBalance).to.equal(INITIAL_SUPPLY);
-      expect(legacyBalance).to.equal(INITIAL_SUPPLY);
-      
-      // Demonstrate the risk: legacy holder can transfer immediately
-      await expect(
-        legacyToken.connect(beneficiary1).transfer(beneficiary2.getAddress(), ethers.parseEther("1000000"))
-      ).to.not.be.reverted;
-      
-      // Secure method: vesting contract cannot transfer without proper schedule
-      // (This would require a proper transfer function in vesting contract)
-      
-      console.log("Security comparison:");
-      console.log("   - SECURE: Tokens in vesting contract (gradual release)");
-      console.log("   - LEGACY: Tokens with single holder (immediate transfer risk)");
-      console.log("   - RISK MITIGATED: No single point of failure");
-    });
+    // Legacy comparison removed; tests focus on secure model only
   });
 
   describe("Summary of Security Improvements", function () {

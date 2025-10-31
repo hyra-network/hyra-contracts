@@ -91,54 +91,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     };
   }
 
-  async function deployLegacyTokenFixture() {
-    const [deployer, ownerAddr, beneficiaryAddr, otherAddr] = await ethers.getSigners();
-    
-    // Deploy HyraToken with legacy initialization
-    const Token = await ethers.getContractFactory("HyraToken");
-    const tokenImpl = await Token.deploy();
-    await tokenImpl.waitForDeployment();
-    
-    const ProxyDeployer = await ethers.getContractFactory("HyraProxyDeployer");
-    const proxyDeployer = await ProxyDeployer.deploy();
-    await proxyDeployer.waitForDeployment();
-    
-    const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
-    await proxyAdmin.waitForDeployment();
-    
-    // Deploy with legacy initialization (single holder)
-    const tokenInit = Token.interface.encodeFunctionData("initializeLegacy", [
-      "Hyra Token Legacy",
-      "HYRA-L",
-      INITIAL_SUPPLY,
-      await beneficiaryAddr.getAddress(), // Single holder (RISKY)
-      await ownerAddr.getAddress() // governance
-    ]);
-    
-    const tokenProxy = await proxyDeployer.deployProxy.staticCall(
-      await tokenImpl.getAddress(),
-      await proxyAdmin.getAddress(),
-      tokenInit,
-      "TOKEN-LEGACY"
-    );
-    
-    await (await proxyDeployer.deployProxy(
-      await tokenImpl.getAddress(),
-      await proxyAdmin.getAddress(),
-      tokenInit,
-      "TOKEN-LEGACY"
-    )).wait();
-    
-    const tokenContract = await ethers.getContractAt("HyraToken", tokenProxy);
-    
-    return {
-      token: tokenContract,
-      owner: ownerAddr,
-      beneficiary: beneficiaryAddr,
-      other: otherAddr
-    };
-  }
+  // Legacy flow removed
 
   describe("Secure Initialization (New Method)", function () {
     beforeEach(async function () {
@@ -233,67 +186,20 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     });
   });
 
-  describe("Legacy Initialization (Backward Compatibility)", function () {
-    beforeEach(async function () {
-      const fixture = await loadFixture(deployLegacyTokenFixture);
-      token = fixture.token;
-      owner = fixture.owner;
-      beneficiary = fixture.beneficiary;
-      other = fixture.other;
-    });
-
-    it("should initialize with single holder (legacy method)", async function () {
-      expect(await token.name()).to.equal("Hyra Token Legacy");
-      expect(await token.symbol()).to.equal("HYRA-L");
-      expect(await token.totalSupply()).to.equal(INITIAL_SUPPLY);
-      expect(await token.balanceOf(beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-      expect(await token.owner()).to.equal(await owner.getAddress());
-    });
-
-    it("should allow beneficiary to transfer tokens (demonstrating the risk)", async function () {
-      // This demonstrates the centralization risk - single holder can transfer all tokens
-      const transferAmount = ethers.parseEther("1000000");
-      
-      await expect(
-        token.connect(beneficiary).transfer(other.getAddress(), transferAmount)
-      ).to.not.be.reverted;
-      
-      expect(await token.balanceOf(other.getAddress())).to.equal(transferAmount);
-      expect(await token.balanceOf(beneficiary.getAddress())).to.equal(INITIAL_SUPPLY - transferAmount);
-    });
-
-    it("should emit InitialDistribution event with single holder", async function () {
-      // Verify that the legacy method still emits the event
-      expect(await token.balanceOf(beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-    });
-  });
+  // Legacy Initialization tests removed
 
   describe("Security Comparison", function () {
-    it("should demonstrate security difference between methods", async function () {
+    it("should keep initial tokens in vesting (no direct transfer)", async function () {
       const secureFixture = await loadFixture(deployTokenFixture);
-      const legacyFixture = await loadFixture(deployLegacyTokenFixture);
-      
       // Secure method: tokens go to vesting contract
       expect(await secureFixture.token.balanceOf(await secureFixture.vesting.getAddress())).to.equal(INITIAL_SUPPLY);
-      
-      // Legacy method: tokens go to single beneficiary
-      expect(await legacyFixture.token.balanceOf(legacyFixture.beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-      
-      // Demonstrate the risk: legacy beneficiary can transfer immediately
-      await expect(
-        legacyFixture.token.connect(legacyFixture.beneficiary).transfer(
-          legacyFixture.other.getAddress(), 
-          ethers.parseEther("1000000")
-        )
-      ).to.not.be.reverted;
-      
-      // Secure method: vesting contract cannot transfer without proper authorization
+      // Vesting has no direct transfer in mock
       await expect(
         secureFixture.vesting.connect(secureFixture.owner).transfer(
           secureFixture.beneficiary.getAddress(), 
           ethers.parseEther("1000000")
         )
-      ).to.be.reverted; // Mock vesting doesn't have direct transfer
+      ).to.be.reverted;
     });
   });
 

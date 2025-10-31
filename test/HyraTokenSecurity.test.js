@@ -55,36 +55,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
             other: otherAddr
         };
     }
-    async function deployLegacyTokenFixture() {
-        const [deployer, ownerAddr, beneficiaryAddr, otherAddr] = await hardhat_1.ethers.getSigners();
-        // Deploy HyraToken with legacy initialization
-        const Token = await hardhat_1.ethers.getContractFactory("HyraToken");
-        const tokenImpl = await Token.deploy();
-        await tokenImpl.waitForDeployment();
-        const ProxyDeployer = await hardhat_1.ethers.getContractFactory("HyraProxyDeployer");
-        const proxyDeployer = await ProxyDeployer.deploy();
-        await proxyDeployer.waitForDeployment();
-        const ProxyAdmin = await hardhat_1.ethers.getContractFactory("HyraProxyAdmin");
-        const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
-        await proxyAdmin.waitForDeployment();
-        // Deploy with legacy initialization (single holder)
-        const tokenInit = Token.interface.encodeFunctionData("initializeLegacy", [
-            "Hyra Token Legacy",
-            "HYRA-L",
-            INITIAL_SUPPLY,
-            await beneficiaryAddr.getAddress(), // Single holder (RISKY)
-            await ownerAddr.getAddress() // governance
-        ]);
-        const tokenProxy = await proxyDeployer.deployProxy.staticCall(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "TOKEN-LEGACY");
-        await (await proxyDeployer.deployProxy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "TOKEN-LEGACY")).wait();
-        const tokenContract = await hardhat_1.ethers.getContractAt("HyraToken", tokenProxy);
-        return {
-            token: tokenContract,
-            owner: ownerAddr,
-            beneficiary: beneficiaryAddr,
-            other: otherAddr
-        };
-    }
+    // Legacy flow removed in JS tests as well
     describe("Secure Initialization (New Method)", function () {
         beforeEach(async function () {
             const fixture = await (0, hardhat_network_helpers_1.loadFixture)(deployTokenFixture);
@@ -144,45 +115,12 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
             await (0, chai_1.expect)(proxyDeployer.deployProxy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "TOKEN")).to.be.revertedWith("Initial supply exceeds 5% of max supply");
         });
     });
-    describe("Legacy Initialization (Backward Compatibility)", function () {
-        beforeEach(async function () {
-            const fixture = await (0, hardhat_network_helpers_1.loadFixture)(deployLegacyTokenFixture);
-            token = fixture.token;
-            owner = fixture.owner;
-            beneficiary = fixture.beneficiary;
-            other = fixture.other;
-        });
-        it("should initialize with single holder (legacy method)", async function () {
-            (0, chai_1.expect)(await token.name()).to.equal("Hyra Token Legacy");
-            (0, chai_1.expect)(await token.symbol()).to.equal("HYRA-L");
-            (0, chai_1.expect)(await token.totalSupply()).to.equal(INITIAL_SUPPLY);
-            (0, chai_1.expect)(await token.balanceOf(beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-            (0, chai_1.expect)(await token.owner()).to.equal(await owner.getAddress());
-        });
-        it("should allow beneficiary to transfer tokens (demonstrating the risk)", async function () {
-            // This demonstrates the centralization risk - single holder can transfer all tokens
-            const transferAmount = hardhat_1.ethers.parseEther("1000000");
-            await (0, chai_1.expect)(token.connect(beneficiary).transfer(other.getAddress(), transferAmount)).to.not.be.reverted;
-            (0, chai_1.expect)(await token.balanceOf(other.getAddress())).to.equal(transferAmount);
-            (0, chai_1.expect)(await token.balanceOf(beneficiary.getAddress())).to.equal(INITIAL_SUPPLY - transferAmount);
-        });
-        it("should emit InitialDistribution event with single holder", async function () {
-            // Verify that the legacy method still emits the event
-            (0, chai_1.expect)(await token.balanceOf(beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-        });
-    });
+    // Legacy Initialization tests removed
     describe("Security Comparison", function () {
-        it("should demonstrate security difference between methods", async function () {
+        it("should keep initial tokens in vesting (no direct transfer)", async function () {
             const secureFixture = await (0, hardhat_network_helpers_1.loadFixture)(deployTokenFixture);
-            const legacyFixture = await (0, hardhat_network_helpers_1.loadFixture)(deployLegacyTokenFixture);
-            // Secure method: tokens go to vesting contract
             (0, chai_1.expect)(await secureFixture.token.balanceOf(await secureFixture.vesting.getAddress())).to.equal(INITIAL_SUPPLY);
-            // Legacy method: tokens go to single beneficiary
-            (0, chai_1.expect)(await legacyFixture.token.balanceOf(legacyFixture.beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-            // Demonstrate the risk: legacy beneficiary can transfer immediately
-            await (0, chai_1.expect)(legacyFixture.token.connect(legacyFixture.beneficiary).transfer(legacyFixture.other.getAddress(), hardhat_1.ethers.parseEther("1000000"))).to.not.be.reverted;
-            // Secure method: vesting contract cannot transfer without proper authorization
-            await (0, chai_1.expect)(secureFixture.vesting.connect(secureFixture.owner).transfer(secureFixture.beneficiary.getAddress(), hardhat_1.ethers.parseEther("1000000"))).to.be.reverted; // Mock vesting doesn't have direct transfer
+            await (0, chai_1.expect)(secureFixture.vesting.connect(secureFixture.owner).transfer(secureFixture.beneficiary.getAddress(), hardhat_1.ethers.parseEther("1000000"))).to.be.reverted;
         });
     });
     describe("Mint Request Security", function () {

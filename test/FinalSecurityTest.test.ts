@@ -63,53 +63,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
     };
   }
 
-  async function deployLegacyTokenFixture() {
-    const [deployer, ownerAddr, beneficiaryAddr] = await ethers.getSigners();
-    
-    // Deploy HyraToken with legacy initialization
-    const Token = await ethers.getContractFactory("HyraToken");
-    const tokenImpl = await Token.deploy();
-    await tokenImpl.waitForDeployment();
-    
-    const ProxyDeployer = await ethers.getContractFactory("HyraProxyDeployer");
-    const proxyDeployer = await ProxyDeployer.deploy();
-    await proxyDeployer.waitForDeployment();
-    
-    const ProxyAdmin = await ethers.getContractFactory("HyraProxyAdmin");
-    const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
-    await proxyAdmin.waitForDeployment();
-    
-    // Deploy with legacy method (RISKY)
-    const legacyInit = Token.interface.encodeFunctionData("initializeLegacy", [
-      "Hyra Token Legacy",
-      "HYRA-L",
-      INITIAL_SUPPLY,
-      await beneficiaryAddr.getAddress(), // Single holder (RISKY)
-      await ownerAddr.getAddress()
-    ]);
-    
-    const legacyProxy = await proxyDeployer.deployProxy.staticCall(
-      await tokenImpl.getAddress(),
-      await proxyAdmin.getAddress(),
-      legacyInit,
-      "LEGACY"
-    );
-    
-    await (await proxyDeployer.deployProxy(
-      await tokenImpl.getAddress(),
-      await proxyAdmin.getAddress(),
-      legacyInit,
-      "LEGACY"
-    )).wait();
-    
-    const legacyToken = await ethers.getContractAt("HyraToken", legacyProxy);
-    
-    return {
-      token: legacyToken,
-      owner: ownerAddr,
-      beneficiary: beneficiaryAddr
-    };
-  }
+  // Legacy fixture removed
 
   describe("Security Fix Verification", function () {
     it("Should use vesting contract instead of single holder", async function () {
@@ -127,26 +81,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       console.log(`   - Single holder balance: 0 tokens`);
     });
 
-    it("Should demonstrate legacy risk (single holder)", async function () {
-      const fixture = await loadFixture(deployLegacyTokenFixture);
-      const legacyToken = fixture.token;
-      
-      // Verify tokens are minted to single holder (RISKY)
-      expect(await legacyToken.balanceOf(fixture.beneficiary.getAddress())).to.equal(INITIAL_SUPPLY);
-      
-      // Demonstrate the risk: single holder can transfer immediately
-      const transferAmount = ethers.parseEther("1000000");
-      await expect(
-        legacyToken.connect(fixture.beneficiary).transfer(
-          "0x9999999999999999999999999999999999999999", 
-          transferAmount
-        )
-      ).to.not.be.reverted;
-      
-      console.log("RISKY: Single holder has immediate access to all tokens");
-      console.log(`   - Single holder balance: ${ethers.formatEther(INITIAL_SUPPLY)} tokens`);
-      console.log(`   - Can transfer immediately without restrictions`);
-    });
+    // Legacy comparison removed
 
     it("Should enforce maximum initial supply limit", async function () {
       const fixture = await loadFixture(deploySecureTokenFixture);
@@ -216,17 +151,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
       console.log("Secure minting: Requires DAO approval and 2-day delay");
     });
 
-    it("Should maintain backward compatibility", async function () {
-      // Test that legacy initialization still works for existing deployments
-      const legacyFixture = await loadFixture(deployLegacyTokenFixture);
-      const legacyToken = legacyFixture.token;
-      
-      expect(await legacyToken.name()).to.equal("Hyra Token Legacy");
-      expect(await legacyToken.symbol()).to.equal("HYRA-L");
-      expect(await legacyToken.totalSupply()).to.equal(INITIAL_SUPPLY);
-      
-      console.log("Backward compatibility: Legacy initialization still works");
-    });
+    // Backward compatibility test removed
   });
 
   describe("Final Security Summary", function () {

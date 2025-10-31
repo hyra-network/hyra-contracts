@@ -33,16 +33,16 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
     beforeEach(async function () {
         [owner, voter1, voter2, voter3] = await ethers.getSigners();
 
-        // Deploy HyraToken via ERC1967Proxy (initializeLegacy)
+        // Deploy HyraToken via ERC1967Proxy (initialize)
         const HyraTokenFactory = await ethers.getContractFactory("HyraToken");
         const tokenImpl = await HyraTokenFactory.deploy();
         await tokenImpl.waitForDeployment();
-        const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initializeLegacy", [
+        const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initialize", [
             "Hyra Token",
             "HYRA",
             ethers.parseEther("10000000"),
-            await owner.getAddress(),
-            await owner.getAddress(),
+            await owner.getAddress(), // vesting recipient (for test simplicity)
+            await owner.getAddress(), // governance/owner
         ]);
         const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
         const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit);

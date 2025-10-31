@@ -28,11 +28,11 @@ describe("Reentrancy Attack Tests", function () {
     // Deploy via ERC1967Proxy with init data
     const TokenImpl = await HyraTokenFactory.deploy();
     await TokenImpl.waitForDeployment();
-    const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initializeLegacy", [
+    const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initialize", [
       "Hyra Token",
       "HYRA",
       ethers.parseEther("1000000"),
-      await owner.getAddress(),
+      await owner.getAddress(), // vesting recipient (for test simplicity)
       await owner.getAddress(),
     ]);
     const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
