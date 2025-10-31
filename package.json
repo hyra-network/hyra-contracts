@@ -8,7 +8,8 @@
     "test:token": "hardhat test test/token.hyra.ts",
     "test:security": "hardhat test test/*Security*.test.ts",
     "test:vesting": "hardhat test test/TokenVesting.test.ts",
-    "test:all": "hardhat test test/"
+    "test:all": "hardhat test test/",
+    "centralization:setup": "bash scripts/ops/run-centralization-setup.sh"
   },
   "keywords": [],
   "author": "",
