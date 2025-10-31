@@ -43,8 +43,6 @@ contract HyraToken is
     uint256 public constant YEAR_DURATION = 365 days;
     
     // ============ State Variables ============
-    mapping(address => bool) public minters;
-    mapping(address => uint256) public mintAllowances;
     // Removed unused governanceAddress - using owner() instead
     uint256 public totalMintedSupply;
     
@@ -73,9 +71,6 @@ contract HyraToken is
     uint256[39] private __gap;
 
     // ============ Events ============
-    event MinterAdded(address indexed minter);
-    event MinterRemoved(address indexed minter);
-    event MintAllowanceSet(address indexed minter, uint256 allowance);
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
     event MintRequestCreated(uint256 indexed requestId, address indexed recipient, uint256 amount, string purpose);
     event MintRequestApproved(uint256 indexed requestId, uint256 executionTime);
@@ -104,10 +99,7 @@ contract HyraToken is
     error RequestExpired();
 
     // ============ Modifiers ============
-    modifier onlyMinter() {
-        if (!minters[msg.sender] && msg.sender != owner()) revert NotMinter();
-        _;
-    }
+    // Removed onlyMinter modifier along with minter role logic
 
     modifier validAddress(address _addr) {
         if (_addr == address(0)) revert ZeroAddress();
@@ -163,49 +155,7 @@ contract HyraToken is
         originalMintYearStartTime = block.timestamp; // Store original start time
     }
     
-    /**
-     * @notice DEPRECATED: Legacy initialize function for backward compatibility
-     * @dev This function is kept for backward compatibility but should not be used
-     * @param _name Token name
-     * @param _symbol Token symbol
-     * @param _initialSupply Initial token supply
-     * @param _initialHolder Address to receive initial supply (DEPRECATED - use vesting)
-     * @param _governance Initial governance address
-     */
-    function initializeLegacy(
-        string memory _name,
-        string memory _symbol,
-        uint256 _initialSupply,
-        address _initialHolder,
-        address _governance
-    ) public initializer validAddress(_initialHolder) validAddress(_governance) {
-        __ERC20_init(_name, _symbol);
-        __ERC20Burnable_init();
-        __ERC20Permit_init(_name);
-        __ERC20Votes_init();
-        __Ownable_init(_governance);
-        __Pausable_init();
-        __ReentrancyGuard_init();
-        
-        // Initial supply should not exceed 5% (2.5B) 
-        require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
-        
-        if (_initialSupply > 0) {
-            _mint(_initialHolder, _initialSupply);
-            totalMintedSupply = _initialSupply;
-            
-            // Track initial supply in year 1
-            mintedByYear[1] = _initialSupply;
-            
-            // Emit event for transparency
-            emit InitialDistribution(_initialHolder, _initialSupply, block.timestamp);
-        }
-        
-        // Initialize mint year tracking
-        currentMintYear = 1;
-        mintYearStartTime = block.timestamp;
-        originalMintYearStartTime = block.timestamp; // Store original start time
-    }
+    // Legacy initializer removed to eliminate single-holder initial distribution path
 
     // ============ Minting Functions ============
 
@@ -380,46 +330,7 @@ contract HyraToken is
     }
 
     // ============ Minter Management ============
-
-    /**
-     * @notice Add a new minter
-     * @param _minter Address to grant minting permission
-     */
-    function addMinter(address _minter) 
-        external 
-        override 
-        onlyOwner 
-        validAddress(_minter) 
-    {
-        if (minters[_minter]) revert AlreadyMinter();
-        minters[_minter] = true;
-        emit MinterAdded(_minter);
-    }
-
-    /**
-     * @notice Remove a minter
-     * @param _minter Address to revoke minting permission
-     */
-    function removeMinter(address _minter) external override onlyOwner {
-        if (!minters[_minter]) revert NotMinter();
-        minters[_minter] = false;
-        delete mintAllowances[_minter];
-        emit MinterRemoved(_minter);
-    }
-
-    /**
-     * @notice Set mint allowance for a minter
-     * @param _minter Address of the minter
-     * @param _allowance Amount allowed to mint
-     */
-    function setMintAllowance(address _minter, uint256 _allowance) 
-        external 
-        override 
-        onlyOwner 
-    {
-        mintAllowances[_minter] = _allowance;
-        emit MintAllowanceSet(_minter, _allowance);
-    }
+    // Removed: addMinter, removeMinter, setMintAllowance (unused)
 
     // ============ Governance Functions ============
 
@@ -457,12 +368,7 @@ contract HyraToken is
 
     // ============ View Functions ============
 
-    /**
-     * @notice Check if an address is a minter
-     */
-    function isMinter(address _account) external view override returns (bool) {
-        return minters[_account] || _account == owner();
-    }
+    // Removed: isMinter (unused)
 
     /**
      * @notice Get remaining mint capacity for current year

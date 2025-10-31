@@ -7,30 +7,7 @@ async function main() {
 	console.log(`Deployer: ${await deployer.getAddress()}`);
 	console.log(`Balance: ${ethers.formatEther(await ethers.provider.getBalance(await deployer.getAddress()))} ETH`);
 
-	// 1) Deploy TokenVesting
-	const TokenVesting = await ethers.getContractFactory("TokenVesting");
-	const vesting = await TokenVesting.deploy();
-	await vesting.waitForDeployment();
-	console.log(`TokenVesting: ${await vesting.getAddress()}`);
-
-	// 2) Deploy HyraToken (implementation) and initialize
-	const HyraToken = await ethers.getContractFactory("HyraToken");
-	const token = await HyraToken.deploy();
-	await token.waitForDeployment();
-	console.log(`HyraToken: ${await token.getAddress()}`);
-    // Initialize token (legacy path to avoid vesting coupling on L2 nodes)
-    await (
-        await token.initializeLegacy(
-            "Hyra Token",
-            "HYRA",
-            ethers.parseEther("1000000"),
-            await deployer.getAddress(),
-            await deployer.getAddress()
-        )
-    ).wait();
-	console.log(`HyraToken initialized`);
-
-	// 3) Deploy HyraTimelock and initialize
+	// 1) Deploy HyraTimelock and initialize (acts as governance owner)
 	const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
 	const timelock = await HyraTimelock.deploy();
 	await timelock.waitForDeployment();
@@ -44,6 +21,37 @@ async function main() {
 		)
 	).wait();
 	console.log(`HyraTimelock initialized`);
+
+	// 2) Deploy TokenVesting (owner to be set to timelock after init)
+	const TokenVesting = await ethers.getContractFactory("TokenVesting");
+	const vesting = await TokenVesting.deploy();
+	await vesting.waitForDeployment();
+	console.log(`TokenVesting: ${await vesting.getAddress()}`);
+
+	// 3) Deploy HyraToken and initialize with vesting + timelock owner
+	const HyraToken = await ethers.getContractFactory("HyraToken");
+	const token = await HyraToken.deploy();
+	await token.waitForDeployment();
+	console.log(`HyraToken: ${await token.getAddress()}`);
+	await (
+		await token.initialize(
+			"Hyra Token",
+			"HYRA",
+			ethers.parseEther("1000000"),
+			await vesting.getAddress(),
+			await timelock.getAddress()
+		)
+	).wait();
+	console.log(`HyraToken initialized with vesting + timelock`);
+
+	// 3.1) Initialize vesting with token and set owner to timelock
+	await (
+		await vesting.initialize(
+			await token.getAddress(),
+			await timelock.getAddress()
+		)
+	).wait();
+	console.log(`TokenVesting initialized (owner=Timelock)`);
 
 	// 4) Deploy HyraGovernor and initialize
 	const HyraGovernor = await ethers.getContractFactory("HyraGovernor");
@@ -61,10 +69,6 @@ async function main() {
 		)
 	).wait();
 	console.log(`HyraGovernor initialized`);
-
-	// 5) Transfer token governance to timelock
-	await (await token.transferGovernance(await timelock.getAddress())).wait();
-	console.log(`Token governance transferred to Timelock`);
 
 	// Save deployment info
 	const fs = require("fs");

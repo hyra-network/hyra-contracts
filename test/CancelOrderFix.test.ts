@@ -31,15 +31,15 @@ describe("Cancel Order Fix - Execution Order Test", function () {
     beforeEach(async function () {
         [owner, proposer, securityCouncil, voter] = await ethers.getSigners();
 
-        // Deploy HyraToken via ERC1967Proxy using initializeLegacy
+        // Deploy HyraToken via ERC1967Proxy using initialize
         const HyraTokenFactory = await ethers.getContractFactory("HyraToken");
         const tokenImpl = await HyraTokenFactory.deploy();
         await tokenImpl.waitForDeployment();
-        const tokenInitData = HyraTokenFactory.interface.encodeFunctionData("initializeLegacy", [
+        const tokenInitData = HyraTokenFactory.interface.encodeFunctionData("initialize", [
             "Hyra Token",
             "HYRA",
             ethers.parseEther("10000000"), // 10M initial supply
-            owner.address,
+            owner.address, // vesting recipient (for test simplicity)
             owner.address
         ]);
         const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
