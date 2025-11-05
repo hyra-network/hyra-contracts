@@ -8,30 +8,13 @@ async function main() {
 
 	const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
 
-	// TokenVesting implementation + init later if needed
+	// TokenVesting implementation
 	const TokenVesting = await ethers.getContractFactory("TokenVesting");
 	const vestingImpl = await TokenVesting.deploy();
 	await vestingImpl.waitForDeployment();
 	console.log(`TokenVesting impl: ${await vestingImpl.getAddress()}`);
 
-	// HyraToken impl + proxy with initialize
-	const HyraToken = await ethers.getContractFactory("HyraToken");
-	const tokenImpl = await HyraToken.deploy();
-	await tokenImpl.waitForDeployment();
-    const tokenInit = HyraToken.interface.encodeFunctionData("initializeLegacy", [
-        "Hyra Token",
-        "HYRA",
-        ethers.parseEther("1000000"),
-        await deployer.getAddress(),
-        await deployer.getAddress(),
-    ]);
-	const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit);
-	await tokenProxy.waitForDeployment();
-	console.log(`HyraToken proxy: ${await tokenProxy.getAddress()}`);
-
-    // Optionally initialize vesting later if needed
-
-	// HyraTimelock impl + proxy with initialize
+	// HyraTimelock impl + proxy with initialize (used as governance/owner)
 	const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
 	const timelockImpl = await HyraTimelock.deploy();
 	await timelockImpl.waitForDeployment();
@@ -44,6 +27,34 @@ async function main() {
 	const timelockProxy = await ERC1967Proxy.deploy(await timelockImpl.getAddress(), tlInit);
 	await timelockProxy.waitForDeployment();
 	console.log(`HyraTimelock proxy: ${await timelockProxy.getAddress()}`);
+
+	// TokenVesting proxy (initialize after token is deployed)
+	const vestingProxy = await ERC1967Proxy.deploy(
+		await vestingImpl.getAddress(),
+		"0x"
+	);
+	await vestingProxy.waitForDeployment();
+	console.log(`TokenVesting proxy: ${await vestingProxy.getAddress()}`);
+
+	// HyraToken impl + proxy with initialize (mint to vesting; owner=timelock)
+	const HyraToken = await ethers.getContractFactory("HyraToken");
+	const tokenImpl = await HyraToken.deploy();
+	await tokenImpl.waitForDeployment();
+	const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
+		"Hyra Token",
+		"HYRA",
+		ethers.parseEther("1000000"),
+		await vestingProxy.getAddress(),
+		await timelockProxy.getAddress(),
+	]);
+	const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit);
+	await tokenProxy.waitForDeployment();
+	console.log(`HyraToken proxy: ${await tokenProxy.getAddress()}`);
+
+	// Initialize TokenVesting now that tokenProxy exists (owner=timelock)
+	const vesting = await ethers.getContractAt("TokenVesting", await vestingProxy.getAddress());
+	await (await vesting.initialize(await tokenProxy.getAddress(), await timelockProxy.getAddress())).wait();
+	console.log(`TokenVesting initialized (owner=Timelock)`);
 
 	// HyraGovernor impl + proxy with initialize
 	const HyraGovernor = await ethers.getContractFactory("HyraGovernor");
@@ -73,6 +84,7 @@ async function main() {
 			{
 				deployer: await deployer.getAddress(),
 				vestingImpl: await vestingImpl.getAddress(),
+				vestingProxy: await vestingProxy.getAddress(),
 				tokenImpl: await tokenImpl.getAddress(),
 				tokenProxy: await tokenProxy.getAddress(),
 				timelockImpl: await timelockImpl.getAddress(),
