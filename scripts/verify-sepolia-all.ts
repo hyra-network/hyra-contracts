@@ -27,7 +27,8 @@ async function main() {
 	const hyraProxyDeployer = process.env.PROXY_DEPLOYER_ADDR || "0xbD1C0C79f22f555AAb4A1C5e6aaB8fF1aC361f7A";
 	const secureExecutorManager = process.env.EXEC_MGR_ADDR || "0xe15699aEA307bB19Aa6557848a62111906D4f740";
 	const proxyAdminValidator = process.env.PAV_ADDR || "0x9Ae09f2868234353B1AD3540ED80C1c1b653935C";
-	const vestingImpl = info.vestingImpl as string; // TokenVesting impl
+    const vestingImpl = info.vestingImpl as string; // TokenVesting impl
+    const vestingProxy = info.vestingProxy as string | undefined; // optional in older files
 
 	console.log("Verifying implementations...");
     for (const v of [
@@ -57,14 +58,14 @@ async function main() {
     }
 
 	console.log("Building proxy constructor init data...");
-	const HyraToken = await ethers.getContractFactory("HyraToken");
-	const tokenInit = HyraToken.interface.encodeFunctionData("initializeLegacy", [
-		"Hyra Token",
-		"HYRA",
-		ethers.parseEther("1000000"),
-		deployer,
-		deployer,
-	]);
+    const HyraToken = await ethers.getContractFactory("HyraToken");
+    const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
+        "Hyra Token",
+        "HYRA",
+        ethers.parseEther("1000000"),
+        vestingProxy ?? deployer, // prefer vestingProxy if present
+        timelockProxy,
+    ]);
 	const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
 	const tlInit = HyraTimelock.interface.encodeFunctionData("initialize", [
 		86400,
