@@ -10,13 +10,13 @@ async function main() {
 
 	// TokenVesting implementation
 	const TokenVesting = await ethers.getContractFactory("TokenVesting");
-	const vestingImpl = await TokenVesting.deploy();
+	const vestingImpl = await TokenVesting.deploy({ gasLimit: 8_000_000 });
 	await vestingImpl.waitForDeployment();
 	console.log(`TokenVesting impl: ${await vestingImpl.getAddress()}`);
 
 	// HyraTimelock impl + proxy with initialize (used as governance/owner)
 	const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
-	const timelockImpl = await HyraTimelock.deploy();
+	const timelockImpl = await HyraTimelock.deploy({ gasLimit: 8_000_000 });
 	await timelockImpl.waitForDeployment();
 	const tlInit = HyraTimelock.interface.encodeFunctionData("initialize", [
 		86400,
@@ -24,21 +24,22 @@ async function main() {
 		[await deployer.getAddress()],
 		await deployer.getAddress(),
 	]);
-	const timelockProxy = await ERC1967Proxy.deploy(await timelockImpl.getAddress(), tlInit);
+	const timelockProxy = await ERC1967Proxy.deploy(await timelockImpl.getAddress(), tlInit, { gasLimit: 8_000_000 });
 	await timelockProxy.waitForDeployment();
 	console.log(`HyraTimelock proxy: ${await timelockProxy.getAddress()}`);
 
 	// TokenVesting proxy (initialize after token is deployed)
 	const vestingProxy = await ERC1967Proxy.deploy(
 		await vestingImpl.getAddress(),
-		"0x"
+		"0x",
+		{ gasLimit: 8_000_000 }
 	);
 	await vestingProxy.waitForDeployment();
 	console.log(`TokenVesting proxy: ${await vestingProxy.getAddress()}`);
 
 	// HyraToken impl + proxy with initialize (mint to vesting; owner=timelock)
 	const HyraToken = await ethers.getContractFactory("HyraToken");
-	const tokenImpl = await HyraToken.deploy();
+	const tokenImpl = await HyraToken.deploy({ gasLimit: 8_000_000 });
 	await tokenImpl.waitForDeployment();
 	const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
 		"Hyra Token",
@@ -47,7 +48,7 @@ async function main() {
 		await vestingProxy.getAddress(),
 		await timelockProxy.getAddress(),
 	]);
-	const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit);
+	const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
 	await tokenProxy.waitForDeployment();
 	console.log(`HyraToken proxy: ${await tokenProxy.getAddress()}`);
 
@@ -58,7 +59,7 @@ async function main() {
 
 	// HyraGovernor impl + proxy with initialize
 	const HyraGovernor = await ethers.getContractFactory("HyraGovernor");
-	const governorImpl = await HyraGovernor.deploy();
+	const governorImpl = await HyraGovernor.deploy({ gasLimit: 8_000_000 });
 	await governorImpl.waitForDeployment();
 	const govInit = HyraGovernor.interface.encodeFunctionData("initialize", [
 		await tokenProxy.getAddress(),
@@ -68,7 +69,7 @@ async function main() {
 		ethers.parseEther("1000000"),
 		10,
 	]);
-	const governorProxy = await ERC1967Proxy.deploy(await governorImpl.getAddress(), govInit);
+	const governorProxy = await ERC1967Proxy.deploy(await governorImpl.getAddress(), govInit, { gasLimit: 8_000_000 });
 	await governorProxy.waitForDeployment();
 	console.log(`HyraGovernor proxy: ${await governorProxy.getAddress()}`);
 
