@@ -37,7 +37,11 @@ async function main() {
 	await vestingProxy.waitForDeployment();
 	console.log(`TokenVesting proxy: ${await vestingProxy.getAddress()}`);
 
-	// HyraToken impl + proxy with initialize (mint to vesting; owner=timelock)
+	// HyraToken impl + proxy with initialize (mint to vesting; owner=Safe or Timelock)
+	const safeAddress = process.env.SAFE_ADDRESS || "";
+	const governanceOwner = safeAddress || await timelockProxy.getAddress();
+	console.log(`Token governance owner will be: ${governanceOwner}`);
+	
 	const HyraToken = await ethers.getContractFactory("HyraToken");
 	const tokenImpl = await HyraToken.deploy({ gasLimit: 8_000_000 });
 	await tokenImpl.waitForDeployment();
@@ -46,7 +50,7 @@ async function main() {
 		"HYRA",
 		ethers.parseEther("1000000"),
 		await vestingProxy.getAddress(),
-		await timelockProxy.getAddress(),
+		governanceOwner,
 	]);
 	const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
 	await tokenProxy.waitForDeployment();
