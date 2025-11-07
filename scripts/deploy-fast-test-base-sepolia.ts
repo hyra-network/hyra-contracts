@@ -15,7 +15,50 @@ async function main() {
   console.log("⚠️  WARNING: These contracts are for TESTING ONLY!");
   console.log("   MINT_EXECUTION_DELAY = 2 MINUTES (not 2 days)\n");
 
-  // 1. Deploy HyraTimelockTestable with minimal delay
+  // 1. Deploy Infrastructure Contracts
+  console.log("=== Deploying Infrastructure Contracts ===\n");
+
+  console.log("1.1. Deploying SecureProxyAdmin...");
+  const SecureProxyAdmin = await ethers.getContractFactory("SecureProxyAdmin");
+  const proxyAdmin = await SecureProxyAdmin.deploy(await deployer.getAddress(), 1, { gasLimit: 8_000_000 });
+  await proxyAdmin.waitForDeployment();
+  console.log(`   ✅ SecureProxyAdmin: ${await proxyAdmin.getAddress()}`);
+
+  console.log("\n1.2. Deploying HyraProxyDeployer...");
+  const HyraProxyDeployer = await ethers.getContractFactory("HyraProxyDeployer");
+  const proxyDeployer = await HyraProxyDeployer.deploy({ gasLimit: 8_000_000 });
+  await proxyDeployer.waitForDeployment();
+  console.log(`   ✅ HyraProxyDeployer: ${await proxyDeployer.getAddress()}`);
+
+  console.log("\n1.3. Deploying SecureExecutorManager...");
+  const SecureExecutorManager = await ethers.getContractFactory("SecureExecutorManager");
+  const executorManager = await SecureExecutorManager.deploy({ gasLimit: 8_000_000 });
+  await executorManager.waitForDeployment();
+  console.log(`   ✅ SecureExecutorManager: ${await executorManager.getAddress()}`);
+  
+  try {
+    await (await executorManager.initialize(await deployer.getAddress(), [await deployer.getAddress()], { gasLimit: 8_000_000 })).wait();
+    console.log(`   ✅ SecureExecutorManager initialized`);
+  } catch (e) {
+    console.log(`   ⚠️  SecureExecutorManager.initialize failed (may need manual init)`);
+  }
+
+  console.log("\n1.4. Deploying ProxyAdminValidator...");
+  const ProxyAdminValidator = await ethers.getContractFactory("ProxyAdminValidator");
+  const proxyAdminValidator = await ProxyAdminValidator.deploy({ gasLimit: 8_000_000 });
+  await proxyAdminValidator.waitForDeployment();
+  console.log(`   ✅ ProxyAdminValidator: ${await proxyAdminValidator.getAddress()}`);
+
+  try {
+    await (await proxyAdminValidator.initialize(await deployer.getAddress(), { gasLimit: 8_000_000 })).wait();
+    console.log(`   ✅ ProxyAdminValidator initialized`);
+  } catch (e) {
+    console.log(`   ⚠️  ProxyAdminValidator.initialize failed (may need manual init)`);
+  }
+
+  console.log("\n=== Deploying Core Contracts ===\n");
+
+  // 2. Deploy HyraTimelockTestable with minimal delay
   console.log("1. Deploying HyraTimelock with 1 minute delay...");
   const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
   const timelockImpl = await HyraTimelock.deploy({ gasLimit: 8_000_000 });
@@ -111,6 +154,12 @@ async function main() {
       TIMELOCK_MIN_DELAY: "1 minute",
       REQUEST_EXPIRY_PERIOD: "7 days"
     },
+    infra: {
+      secureProxyAdmin: await proxyAdmin.getAddress(),
+      hyraProxyDeployer: await proxyDeployer.getAddress(),
+      secureExecutorManager: await executorManager.getAddress(),
+      proxyAdminValidator: await proxyAdminValidator.getAddress()
+    },
     vestingImpl: await vestingImpl.getAddress(),
     vestingProxy: await vestingProxy.getAddress(),
     tokenImpl: await tokenImpl.getAddress(),
@@ -127,7 +176,14 @@ async function main() {
 
   console.log("\n=== Deployment Complete ===");
   console.log(`Deployment file: ${deploymentPath}`);
-  console.log("\n📋 Contract Addresses:");
+  
+  console.log("\n📋 Infrastructure Contracts:");
+  console.log(`SecureProxyAdmin: ${await proxyAdmin.getAddress()}`);
+  console.log(`HyraProxyDeployer: ${await proxyDeployer.getAddress()}`);
+  console.log(`SecureExecutorManager: ${await executorManager.getAddress()}`);
+  console.log(`ProxyAdminValidator: ${await proxyAdminValidator.getAddress()}`);
+  
+  console.log("\n📋 Core Contract Addresses:");
   console.log(`TokenVesting (proxy): ${await vestingProxy.getAddress()}`);
   console.log(`HyraTokenFastTest (proxy): ${await tokenProxy.getAddress()}`);
   console.log(`HyraTimelock (proxy): ${await timelockProxy.getAddress()}`);
