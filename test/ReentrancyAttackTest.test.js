@@ -23,7 +23,7 @@ describe("Reentrancy Attack Tests", function () {
         const TokenImpl = await HyraTokenFactory.deploy();
         await TokenImpl.waitForDeployment();
         const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initializeLegacy", [
-            "Hyra Token",
+            "HYRA",
             "HYRA",
             hardhat_1.ethers.parseEther("1000000"),
             await owner.getAddress(),

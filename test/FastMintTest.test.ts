@@ -25,7 +25,7 @@ describe("Fast Mint Test (Time Manipulation)", function () {
     // Deploy proxy
     const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
     const initData = HyraToken.interface.encodeFunctionData("initialize", [
-      "Hyra Token",
+      "HYRA",
       "HYRA",
       INITIAL_SUPPLY,
       await vesting.getAddress(),

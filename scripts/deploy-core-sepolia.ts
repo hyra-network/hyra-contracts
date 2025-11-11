@@ -35,7 +35,7 @@ async function main() {
 	console.log(`HyraToken: ${await token.getAddress()}`);
 	await (
 		await token.initialize(
-			"Hyra Token",
+			"HYRA",
 			"HYRA",
 			ethers.parseEther("1000000"),
 			await vesting.getAddress(),

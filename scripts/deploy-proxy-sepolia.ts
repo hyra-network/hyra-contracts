@@ -46,7 +46,7 @@ async function main() {
 	const tokenImpl = await HyraToken.deploy({ gasLimit: 8_000_000 });
 	await tokenImpl.waitForDeployment();
 	const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
-		"Hyra Token",
+		"HYRA",
 		"HYRA",
 		ethers.parseEther("1000000"),
 		await vestingProxy.getAddress(),

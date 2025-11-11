@@ -58,7 +58,7 @@ class SecureTokenDistributionSetup {
         // DAO configuration
         const daoConfig = {
             // Token config
-            tokenName: "Hyra Token",
+            tokenName: "HYRA",
             tokenSymbol: "HYRA",
             initialSupply: hardhat_1.ethers.parseEther("2500000000"), // 2.5B tokens
             vestingContract: multisigAddress, // Will be replaced with vesting contract

@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 import { time, mine } from "@nomicfoundation/hardhat-network-helpers";
 
-export const NAME = "Hyra Token";
+export const NAME = "HYRA";
 export const SYMBOL = "HYRA";
 export const INITIAL_SUPPLY = ethers.parseEther("1000000"); // initial supply for core token tests
 

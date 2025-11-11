@@ -71,7 +71,7 @@ async function simpleDeploy() {
         console.log("\n Testing basic functionality...");
         // Test token initialization
         console.log("Testing token initialization...");
-        await token.initialize("Hyra Test Token", "HYRA-TEST", hardhat_1.ethers.parseEther("1000000"), deployer.address, deployer.address);
+        await token.initialize("HYRA", "HYRA", hardhat_1.ethers.parseEther("1000000"), deployer.address, deployer.address);
         console.log("   Token initialized");
         // Test timelock initialization
         console.log("Testing timelock initialization...");

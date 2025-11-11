@@ -14,7 +14,7 @@ describe("Comprehensive DAO Testing", function () {
     it("should initialize with correct parameters", async function () {
       const { token, timelock, voter1, voter2 } = await loadFixture(deployCore);
       
-      expect(await token.name()).to.eq("Hyra Token");
+      expect(await token.name()).to.eq("HYRA");
       expect(await token.symbol()).to.eq("HYRA");
       expect(await token.totalSupply()).to.eq(INITIAL_SUPPLY);
       expect(await token.owner()).to.eq(await timelock.getAddress());

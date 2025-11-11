@@ -50,7 +50,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       
       const daoConfig = {
         // Token config
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: ethers.ZeroAddress, // Will be set by deployer
@@ -125,7 +125,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b2!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -158,7 +158,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b3!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -191,7 +191,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b4!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: ethers.ZeroAddress, // Invalid: zero address
@@ -252,7 +252,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       
       // Empty token symbol
       const daoConfig2 = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "", // Invalid: empty symbol
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -286,7 +286,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b6!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -346,7 +346,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b7!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -403,7 +403,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b8!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -442,7 +442,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b9!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -478,7 +478,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b10!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),
@@ -522,7 +522,7 @@ describe("HyraDAOInitializer Security Fixes", function () {
       const startTime = b11!.timestamp + 1000;
       
       const daoConfig = {
-        tokenName: "Hyra Token",
+        tokenName: "HYRA",
         tokenSymbol: "HYRA",
         initialSupply: INITIAL_SUPPLY,
         vestingContract: owner.getAddress(),

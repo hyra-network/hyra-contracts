@@ -42,7 +42,7 @@ describe("Enhanced Coverage Tests", function () {
     await tokenImplementation.waitForDeployment();
 
     const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
-      "Hyra Token",
+      "HYRA",
       "HYRA",
       ethers.parseEther("1000000"),
       await alice.getAddress(), 

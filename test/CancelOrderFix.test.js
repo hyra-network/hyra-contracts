@@ -32,7 +32,7 @@ describe("Cancel Order Fix - Execution Order Test", function () {
         const tokenImpl = await HyraTokenFactory.deploy();
         await tokenImpl.waitForDeployment();
         const tokenInitData = HyraTokenFactory.interface.encodeFunctionData("initializeLegacy", [
-            "Hyra Token",
+            "HYRA",
             "HYRA",
             hardhat_1.ethers.parseEther("10000000"), // 10M initial supply
             owner.address,

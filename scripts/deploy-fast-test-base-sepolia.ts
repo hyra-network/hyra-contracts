@@ -105,7 +105,7 @@ async function main() {
   console.log(`   Owner will be: ${safeAddress}`);
 
   const tokenInit = HyraTokenFastTest.interface.encodeFunctionData("initialize", [
-    "Hyra Token Fast Test",
+    "HYRA",
     "HYRA",
     ethers.parseEther("1000000"), // 1M initial supply
     await vestingProxy.getAddress(),

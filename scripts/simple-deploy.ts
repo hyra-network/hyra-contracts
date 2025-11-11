@@ -85,8 +85,8 @@ async function simpleDeploy() {
     // Test token initialization
     console.log("Testing token initialization...");
     await token.initialize(
-      "Hyra Test Token",
-      "HYRA-TEST",
+      "HYRA",
+      "HYRA",
       ethers.parseEther("1000000"),
       deployer.address,
       deployer.address

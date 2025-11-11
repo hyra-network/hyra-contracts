@@ -38,7 +38,7 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
         const tokenImpl = await HyraTokenFactory.deploy();
         await tokenImpl.waitForDeployment();
         const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initialize", [
-            "Hyra Token",
+            "HYRA",
             "HYRA",
             ethers.parseEther("10000000"),
             await owner.getAddress(), // vesting recipient (for test simplicity)

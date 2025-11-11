@@ -28,7 +28,7 @@ describe("Basic Coverage Test", function () {
         const proxyAdmin = await HyraProxyAdmin.deploy(await timelock.getAddress());
         await proxyAdmin.waitForDeployment();
         const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
-            "Hyra Token",
+            "HYRA",
             "HYRA",
             hardhat_1.ethers.parseEther("1000000"),
             alice.address,
@@ -60,7 +60,7 @@ describe("Basic Coverage Test", function () {
         });
         it("should initialize token correctly", async function () {
             const { token } = await (0, hardhat_network_helpers_1.loadFixture)(deployBasicContracts);
-            (0, chai_1.expect)(await token.name()).to.equal("Hyra Token");
+            (0, chai_1.expect)(await token.name()).to.equal("HYRA");
             (0, chai_1.expect)(await token.symbol()).to.equal("HYRA");
             (0, chai_1.expect)(await token.totalSupply()).to.equal(hardhat_1.ethers.parseEther("1000000"));
         });
@@ -242,7 +242,7 @@ describe("Basic Coverage Test", function () {
     describe("View Functions", function () {
         it("should return correct token information", async function () {
             const { token } = await (0, hardhat_network_helpers_1.loadFixture)(deployBasicContracts);
-            (0, chai_1.expect)(await token.name()).to.equal("Hyra Token");
+            (0, chai_1.expect)(await token.name()).to.equal("HYRA");
             (0, chai_1.expect)(await token.symbol()).to.equal("HYRA");
             (0, chai_1.expect)(await token.decimals()).to.equal(18);
         });

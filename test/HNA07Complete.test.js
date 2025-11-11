@@ -7,7 +7,7 @@ describe("HNA-07 Complete Tests", function () {
     let owner;
     let alice;
     let bob;
-    const TOKEN_NAME = "Hyra Token";
+    const TOKEN_NAME = "HYRA";
     const TOKEN_SYMBOL = "HYRA";
     const INITIAL_SUPPLY = hardhat_1.ethers.parseEther("100000"); // 100K tokens
     const TIER1_ANNUAL_CAP = hardhat_1.ethers.parseEther("2500000000"); // 2.5B per year

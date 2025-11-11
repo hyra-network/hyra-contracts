@@ -32,7 +32,7 @@ describe("Final Security Test - HNA-01 Resolution", function () {
     
     // Deploy token with secure initialization (using vesting contract)
     const tokenInit = Token.interface.encodeFunctionData("initialize", [
-      "Hyra Token Secure",
+      "HYRA",
       "HYRA-S",
       INITIAL_SUPPLY,
       mockVestingAddress, // Use vesting contract instead of single holder

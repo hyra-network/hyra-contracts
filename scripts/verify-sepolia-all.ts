@@ -60,7 +60,7 @@ async function main() {
 	console.log("Building proxy constructor init data...");
     const HyraToken = await ethers.getContractFactory("HyraToken");
     const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
-        "Hyra Token",
+        "HYRA",
         "HYRA",
         ethers.parseEther("1000000"),
         vestingProxy ?? deployer, // prefer vestingProxy if present

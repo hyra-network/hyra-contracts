@@ -99,7 +99,7 @@ describe("Fast Mint Test", function () {
     const HyraToken = await ethers.getContractFactory("HyraToken");
     token = await HyraToken.deploy();
     await token.initialize(
-      "Hyra Token",
+      "HYRA",
       "HYRA",
       ethers.parseEther("1000000"),
       owner.address,

@@ -59,7 +59,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     
     // Deploy token with vesting contract
     const tokenInit = Token.interface.encodeFunctionData("initialize", [
-      "Hyra Token",
+      "HYRA",
       "HYRA",
       INITIAL_SUPPLY,
       vestingProxy, // Use vesting contract instead of single holder
@@ -104,7 +104,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     });
 
     it("should initialize with vesting contract", async function () {
-      expect(await token.name()).to.equal("Hyra Token");
+      expect(await token.name()).to.equal("HYRA");
       expect(await token.symbol()).to.equal("HYRA");
       expect(await token.totalSupply()).to.equal(INITIAL_SUPPLY);
       expect(await token.balanceOf(await vestingContract.getAddress())).to.equal(INITIAL_SUPPLY);

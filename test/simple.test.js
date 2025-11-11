@@ -9,7 +9,7 @@ describe("Simple DAO Testing", function () {
         it("should deploy and initialize all contracts correctly", async function () {
             const { token, governor, timelock, proxyAdmin, proxyDeployer } = await (0, hardhat_network_helpers_1.loadFixture)(fixtures_1.deployCore);
             // Check token
-            (0, chai_1.expect)(await token.name()).to.eq("Hyra Token");
+            (0, chai_1.expect)(await token.name()).to.eq("HYRA");
             (0, chai_1.expect)(await token.symbol()).to.eq("HYRA");
             (0, chai_1.expect)(await token.totalSupply()).to.eq(fixtures_1.INITIAL_SUPPLY);
             // Check governor

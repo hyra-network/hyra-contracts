@@ -38,7 +38,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
         const vestingContract = await hardhat_1.ethers.getContractAt("MockVestingContract", vestingProxy);
         // Deploy token with vesting contract
         const tokenInit = Token.interface.encodeFunctionData("initialize", [
-            "Hyra Token",
+            "HYRA",
             "HYRA",
             INITIAL_SUPPLY,
             vestingProxy, // Use vesting contract instead of single holder
@@ -66,7 +66,7 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
             other = fixture.other;
         });
         it("should initialize with vesting contract", async function () {
-            (0, chai_1.expect)(await token.name()).to.equal("Hyra Token");
+            (0, chai_1.expect)(await token.name()).to.equal("HYRA");
             (0, chai_1.expect)(await token.symbol()).to.equal("HYRA");
             (0, chai_1.expect)(await token.totalSupply()).to.equal(INITIAL_SUPPLY);
             (0, chai_1.expect)(await token.balanceOf(await vestingContract.getAddress())).to.equal(INITIAL_SUPPLY);

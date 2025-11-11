@@ -41,7 +41,7 @@ describe("Simple Coverage Test", function () {
 
     
     const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
-      "Hyra Token",
+      "HYRA",
       "HYRA",
       ethers.parseEther("1000000"),
       alice.address, 
@@ -84,7 +84,7 @@ describe("Simple Coverage Test", function () {
     it("should initialize token correctly", async function () {
       const { token } = await loadFixture(deploySimpleContracts);
 
-      expect(await token.name()).to.equal("Hyra Token");
+      expect(await token.name()).to.equal("HYRA");
       expect(await token.symbol()).to.equal("HYRA");
       expect(await token.totalSupply()).to.equal(ethers.parseEther("1000000"));
     });

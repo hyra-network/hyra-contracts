@@ -50,7 +50,7 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
     
     // Initialize token
     await token.initialize(
-      "Hyra Token",
+      "HYRA",
       "HYRA",
       ethers.parseEther("1000000"),
       await owner.getAddress(), // Mock vesting contract (placeholder)
