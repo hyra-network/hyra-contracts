@@ -1,0 +1,37 @@
+{
+  "network": "baseSepolia",
+  "deployedAt": "2025-11-11T10:26:39.496Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "WARNING": "FAST TEST CONTRACTS - 2 MINUTE DELAY - DO NOT USE IN PRODUCTION",
+  "initialSupply": "2500000000",
+  "initialSupplyNote": "FULL Year 1 quota - cannot mint more until Year 2",
+  "initialSupplyRecipient": "0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2",
+  "safeMultisig": "0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2",
+  "delays": {
+    "MINT_EXECUTION_DELAY": "2 minutes",
+    "TIMELOCK_MIN_DELAY": "1 minute",
+    "REQUEST_EXPIRY_PERIOD": "7 days"
+  },
+  "tokenomics": {
+    "maxSupply": "50000000000",
+    "initialSupply": "2500000000",
+    "year1Remaining": "0",
+    "nextMintAvailable": "Year 2 (after 365 days)",
+    "initialSupplyRecipient": "Safe Multisig (NOT Vesting)"
+  },
+  "infra": {
+    "secureProxyAdmin": "0x5ed6e85708FFa1AAB9569df7843E126fd708475f",
+    "hyraProxyDeployer": "0xc10DD71bB51d701476111A46eAb0dC0ef717CEEc",
+    "secureExecutorManager": "0xC164282D1959C40926b3Dd464330c354d30F80BE",
+    "proxyAdminValidator": "0x4cc178CBEa614717268D31F3d37611d55c189142"
+  },
+  "vestingImpl": "0x5D7D7a4C23f23c67F5805a75AF7fE4E23E4Bcd49",
+  "vestingProxy": "0xaae6Ec232340644DBff4837f4E0949F342Bc4002",
+  "tokenImpl": "0xe8d40961eDAC5791c1348bF293caD9E458c99429",
+  "tokenProxy": "0x17AfAb806901f3ec2fDd980dc97c7eBA57A84694",
+  "timelockImpl": "0x28e70597557d2f850120bE9Fe2D36B381dE6f96B",
+  "timelockProxy": "0xE820945500E51762B4e82Fabf5c8A510a013f6e6",
+  "governorImpl": "0x4a8f39DA15cbd7190A1cb6C0abdb849d96E2DE56",
+  "governorProxy": "0x43024BF773ab9f024Cb7c17f260B8de336C49b25",
+  "owner": "0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2"
+}

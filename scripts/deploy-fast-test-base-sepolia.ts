@@ -102,20 +102,31 @@ async function main() {
   console.log(`   Implementation: ${await tokenImpl.getAddress()}`);
 
   const safeAddress = process.env.SAFE_ADDRESS || await deployer.getAddress();
+  console.log(`   Safe Multisig Address: ${safeAddress}`);
   console.log(`   Owner will be: ${safeAddress}`);
+  if (!process.env.SAFE_ADDRESS) {
+    console.log(`   ⚠️  WARNING: SAFE_ADDRESS not set, using deployer address as fallback!`);
+  }
+
+  // MINT MAX INITIAL SUPPLY: 2.5B tokens (5% of 50B max supply)
+  const INITIAL_SUPPLY_MAX = ethers.parseEther("2500000000"); // 2.5 billion
+  console.log(`   Initial Supply: 2.5B tokens (MAX - 5% of total supply)`);
+  console.log(`   💰 Initial tokens will be minted to: Safe Multisig`);
+  console.log(`   ⚠️  Year 1 quota will be FULL - cannot mint more until Year 2`);
 
   const tokenInit = HyraTokenFastTest.interface.encodeFunctionData("initialize", [
     "HYRA",
     "HYRA",
-    ethers.parseEther("1000000"), // 1M initial supply
-    await vestingProxy.getAddress(),
-    safeAddress // owner = Safe or deployer
+    INITIAL_SUPPLY_MAX, // 2.5B initial supply (MAX)
+    safeAddress,        // 👈 MINT TO SAFE MULTISIG!
+    safeAddress         // owner = Safe
   ]);
   
   const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
   await tokenProxy.waitForDeployment();
   console.log(`   Proxy: ${await tokenProxy.getAddress()}`);
   console.log(`   ✅ Token deployed with 2 MINUTE delay!`);
+  console.log(`   ✅ Initial supply minted: 2.5B HYRA to Safe Multisig`);
 
   // 4. Initialize TokenVesting
   console.log("\n4. Initializing TokenVesting...");
@@ -149,10 +160,21 @@ async function main() {
     deployedAt: new Date().toISOString(),
     deployer: await deployer.getAddress(),
     WARNING: "FAST TEST CONTRACTS - 2 MINUTE DELAY - DO NOT USE IN PRODUCTION",
+    initialSupply: "2500000000", // 2.5B tokens (5% of max supply)
+    initialSupplyNote: "FULL Year 1 quota - cannot mint more until Year 2",
+    initialSupplyRecipient: safeAddress, // Safe Multisig receives initial supply
+    safeMultisig: safeAddress,
     delays: {
       MINT_EXECUTION_DELAY: "2 minutes",
       TIMELOCK_MIN_DELAY: "1 minute",
       REQUEST_EXPIRY_PERIOD: "7 days"
+    },
+    tokenomics: {
+      maxSupply: "50000000000", // 50B
+      initialSupply: "2500000000", // 2.5B (5%)
+      year1Remaining: "0", // FULL
+      nextMintAvailable: "Year 2 (after 365 days)",
+      initialSupplyRecipient: "Safe Multisig (NOT Vesting)",
     },
     infra: {
       secureProxyAdmin: await proxyAdmin.getAddress(),
@@ -189,6 +211,12 @@ async function main() {
   console.log(`HyraTimelock (proxy): ${await timelockProxy.getAddress()}`);
   console.log(`HyraGovernor (proxy): ${await governorProxy.getAddress()}`);
   console.log(`Owner: ${safeAddress}`);
+
+  console.log("\n💰 TOKENOMICS:");
+  console.log(`   - Initial Supply: 2.5B HYRA (MAX 5%)`);
+  console.log(`   - Minted to: ${safeAddress} (Safe Multisig)`);
+  console.log(`   - Year 1 Remaining: 0 (FULL)`);
+  console.log(`   ⚠️  Cannot mint more until Year 2!`);
 
   console.log("\n⚡ FAST TEST MODE:");
   console.log(`   - Mint delay: 2 MINUTES (not 2 days!)`);
