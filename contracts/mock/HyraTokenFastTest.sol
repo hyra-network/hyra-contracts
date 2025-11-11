@@ -43,9 +43,9 @@ contract HyraTokenFastTest is
     uint256 public constant TIER3_ANNUAL_CAP = 750_000_000e18;    // 750M per year (1.5% of 50B)
     
     // Time periods 
-    uint256 public constant TIER1_END_YEAR = 10;  // Year 1-10
-    uint256 public constant TIER2_END_YEAR = 15;  // Year 11-15
-    uint256 public constant TIER3_END_YEAR = 25;  // Year 16-25
+    uint256 public constant TIER1_END_YEAR = 11;  // Year 1-11 (2025-2035)
+    uint256 public constant TIER2_END_YEAR = 16;  // Year 12-16 (2036-2040)
+    uint256 public constant TIER3_END_YEAR = 26;  // Year 17-26 (2041-2050)
     uint256 public constant YEAR_DURATION = 365 days;
     
     // ============ State Variables ============

@@ -37,9 +37,9 @@ contract HyraToken is
     uint256 public constant TIER3_ANNUAL_CAP = 750_000_000e18;    // 750M per year (1.5% of 50B)
     
     // Time periods 
-    uint256 public constant TIER1_END_YEAR = 10;  // Year 1-10
-    uint256 public constant TIER2_END_YEAR = 15;  // Year 11-15
-    uint256 public constant TIER3_END_YEAR = 25;  // Year 16-25
+    uint256 public constant TIER1_END_YEAR = 11;  // Year 1-11 (2025-2035)
+    uint256 public constant TIER2_END_YEAR = 16;  // Year 12-16 (2036-2040)
+    uint256 public constant TIER3_END_YEAR = 26;  // Year 17-26 (2041-2050)
     uint256 public constant YEAR_DURATION = 365 days;
     
     // ============ State Variables ============
@@ -143,6 +143,7 @@ contract HyraToken is
             totalMintedSupply = _initialSupply;
             
             // Track initial supply in year 1
+            // Initial is part of year 1 cap (11 years × 5% = 55% includes initial)
             mintedByYear[1] = _initialSupply;
             
             // Emit event for transparency - now shows vesting contract
@@ -303,13 +304,13 @@ contract HyraToken is
         }
         
         if (year <= TIER1_END_YEAR) {
-            // Year 1-10: 2.5B per year
+            // Year 1-11: 2.5B per year (2025-2035)
             return TIER1_ANNUAL_CAP;
         } else if (year <= TIER2_END_YEAR) {
-            // Year 11-15: 1.5B per year
+            // Year 12-16: 1.5B per year (2036-2040)
             return TIER2_ANNUAL_CAP;
         } else {
-            // Year 16-25: 750M per year
+            // Year 17-26: 750M per year (2041-2050)
             return TIER3_ANNUAL_CAP;
         }
     }
@@ -525,12 +526,13 @@ contract HyraToken is
      * @return Total of all tier caps plus initial mint (42.5B tokens)
      */
     function getMaxMintableSupply() external pure returns (uint256) {
-        return 2_500_000_000e18 +         // Initial mint: 2.5B
-               (TIER1_ANNUAL_CAP * 10) +  // Year 1-10: 25B
-               (TIER2_ANNUAL_CAP * 5) +   // Year 11-15: 7.5B
-               (TIER3_ANNUAL_CAP * 10);   // Year 16-25: 7.5B
+        return (TIER1_ANNUAL_CAP * 11) +  // Year 1-11: 27.5B (55% - 2025-2035, includes initial)
+               (TIER2_ANNUAL_CAP * 5) +   // Year 12-16: 7.5B (15% - 2036-2040)
+               (TIER3_ANNUAL_CAP * 10);   // Year 17-26: 7.5B (15% - 2041-2050)
                // Total: 42.5B (85% of MAX_SUPPLY)
+               // Breakdown: 55% (11 years) + 15% (5 years) + 15% (10 years) = 85%
                // Reserved: 7.5B (15% never minted)
+               // Note: Initial 5% is part of year 1 cap, not separate
     }
 
     // ============ Internal Functions ============
