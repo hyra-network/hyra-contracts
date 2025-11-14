@@ -37,10 +37,14 @@ contract HyraToken is
     uint256 public constant TIER3_ANNUAL_CAP = 750_000_000e18;    // 750M per year (1.5% of 50B)
     
     // Time periods 
-    uint256 public constant TIER1_END_YEAR = 10;  // Year 1-10
-    uint256 public constant TIER2_END_YEAR = 15;  // Year 11-15
-    uint256 public constant TIER3_END_YEAR = 25;  // Year 16-25
+    uint256 public constant TIER1_END_YEAR = 10;  // Year 1-10 (2025-2034)
+    uint256 public constant TIER2_END_YEAR = 15;  // Year 11-15 (2035-2039)
+    uint256 public constant TIER3_END_YEAR = 25;  // Year 16-25 (2040-2049)
     uint256 public constant YEAR_DURATION = 365 days;
+    
+    // Calendar year constants - Hardcoded to ensure Year 1 = 2025, Year 25 = 2049
+    // 01/01/2025 00:00:00 UTC - Mint period starts regardless of deploy time
+    uint256 public constant YEAR_2025_START = 1735689600;
     
     // ============ State Variables ============
     // Removed unused governanceAddress - using owner() instead
@@ -61,6 +65,7 @@ contract HyraToken is
         uint256 approvedAt;
         bool executed;
         string purpose;
+        uint256 yearCreated; // Track which year this request was created for
     }
     
     mapping(uint256 => MintRequest) public mintRequests;
@@ -89,6 +94,7 @@ contract HyraToken is
     error ExceedsAnnualMintCap(uint256 requested, uint256 available);
     error ExceedsMaxSupply(uint256 resultingSupply, uint256 maxSupply);
     error MintingPeriodEnded();
+    error MintingPeriodNotStarted(); // NEW: Before 01/01/2025
     error InsufficientMintAllowance(uint256 requested, uint256 available);
     error NotMinter();
     error AlreadyMinter();
@@ -150,9 +156,10 @@ contract HyraToken is
         }
         
         // Initialize mint year tracking
+        // HARDCODED to 01/01/2025 - Year 1 = 2025, Year 2 = 2026, etc.
         currentMintYear = 1;
-        mintYearStartTime = block.timestamp;
-        originalMintYearStartTime = block.timestamp; // Store original start time
+        mintYearStartTime = YEAR_2025_START;
+        originalMintYearStartTime = YEAR_2025_START;
     }
     
     // Legacy initializer removed to eliminate single-holder initial distribution path
@@ -172,6 +179,12 @@ contract HyraToken is
     ) external onlyOwner validAddress(_recipient) returns (uint256 requestId) {
         if (_amount == 0) revert InvalidAmount();
         
+        // CALENDAR YEAR VALIDATION: Check if we're in the mint period (2025-2049)
+        // 31/12/2049 23:59:59 UTC = 2524607999
+        if (block.timestamp < YEAR_2025_START) {
+            revert MintingPeriodNotStarted();
+        }
+
         // Check if we need to reset annual mint tracking
         _checkAndResetMintYear();
         
@@ -208,7 +221,8 @@ contract HyraToken is
             amount: _amount,
             approvedAt: block.timestamp,
             executed: false,
-            purpose: _purpose
+            purpose: _purpose,
+            yearCreated: currentMintYear // Store the year this request was created for
         });
         
         emit MintRequestCreated(requestId, _recipient, _amount, _purpose);
@@ -240,7 +254,8 @@ contract HyraToken is
         request.executed = true;
         
         // Update year-specific tracking with overflow/underflow checks
-        uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        // Use yearCreated instead of calculating from approvedAt to ensure correct tracking
+        uint256 requestYear = request.yearCreated;
         
         // Check for overflow
         require(mintedByYear[requestYear] + request.amount >= mintedByYear[requestYear], "MintedByYear overflow");
@@ -274,7 +289,8 @@ contract HyraToken is
         if (request.executed) revert AlreadyExecuted();
         
         // Update year-specific pending tracking with underflow check
-        uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        // Use yearCreated to ensure correct tracking
+        uint256 requestYear = request.yearCreated;
         require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
         pendingByYear[requestYear] -= request.amount;
         
@@ -522,15 +538,15 @@ contract HyraToken is
 
     /**
      * @notice Get total maximum mintable supply over 25 years
-     * @return Total of all tier caps plus initial mint (42.5B tokens)
+     * @return Total of all tier caps plus initial mint (40B tokens = 80% of MAX_SUPPLY)
      */
     function getMaxMintableSupply() external pure returns (uint256) {
-        return 2_500_000_000e18 +         // Initial mint: 2.5B
-               (TIER1_ANNUAL_CAP * 10) +  // Year 1-10: 25B
-               (TIER2_ANNUAL_CAP * 5) +   // Year 11-15: 7.5B
-               (TIER3_ANNUAL_CAP * 10);   // Year 16-25: 7.5B
-               // Total: 42.5B (85% of MAX_SUPPLY)
-               // Reserved: 7.5B (15% never minted)
+        return 2_500_000_000e18 +         // Year 1 pre-mint: 2.5B
+               (TIER1_ANNUAL_CAP * 9) +   // Year 2-10 (9 years): 22.5B
+               (TIER2_ANNUAL_CAP * 5) +   // Year 11-15 (5 years): 7.5B
+               (TIER3_ANNUAL_CAP * 10);   // Year 16-25 (10 years): 7.5B
+               // Total: 40B (80% of MAX_SUPPLY)
+               // Reserved: 10B (20% never minted)
     }
 
     // ============ Internal Functions ============
@@ -578,7 +594,7 @@ contract HyraToken is
                 currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
                 
                 // Auto-cancel expired request with underflow check
-                uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                uint256 requestYear = request.yearCreated;
                 require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
                 pendingByYear[requestYear] -= request.amount;
                 
