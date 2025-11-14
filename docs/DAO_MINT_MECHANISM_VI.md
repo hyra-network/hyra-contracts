@@ -67,18 +67,212 @@ HYRA Token có cơ chế mint phân tầng qua DAO trong 25 năm, từ **01/01/2
 ### **Các Bước Chi Tiết**
 
 #### **Bước 1: Tạo Proposal**
-- DAO member tạo proposal mint tokens
+
+**Loại Proposal (ProposalType):**
+
+Mint request thường dùng **STANDARD** hoặc **UPGRADE** proposal:
+
+| Loại | Quorum | Mô Tả | Sử Dụng Cho |
+|------|--------|-------|-------------|
+| **STANDARD** | 10% | Proposal thông thường | Mint thường xuyên, operations |
+| **EMERGENCY** | 20% | Khẩn cấp (chỉ Security Council) | Emergency situations |
+| **UPGRADE** | 25% | Nâng cấp contract | Contract upgrades, major changes |
+| **CONSTITUTIONAL** | 30% | Thay đổi cơ bản | Governance changes, tokenomics |
+
+**Tạo Proposal:**
+```solidity
+// Tạo STANDARD proposal (mint thông thường)
+governor.proposeWithType(
+    targets,      // [tokenAddress]
+    values,       // [0]
+    calldatas,    // [createMintRequest(...)]
+    description,  // "Mint 2.5B HYRA for Q1 2026"
+    ProposalType.STANDARD  // Type = 0
+);
+
+// Tạo UPGRADE proposal (mint cho major milestone)
+governor.proposeWithType(
+    targets,
+    values,
+    calldatas,
+    description,  // "Mint 2.5B HYRA for Mainnet Launch"
+    ProposalType.UPGRADE  // Type = 3
+);
+```
+
+**Yêu cầu:**
+- Proposer phải có đủ tokens (proposal threshold)
+- EMERGENCY proposals chỉ Security Council tạo được
 - Ghi rõ: recipient, amount, purpose
 
 #### **Bước 2: Vote**
-- Cần đạt **quorum 10%** total supply
-- Voting period: ~7 ngày
-- Majority vote: > 50% agree
+
+**Quorum Requirements:**
+- **STANDARD**: Cần đạt **10%** total supply
+- **EMERGENCY**: Cần đạt **20%** total supply
+- **UPGRADE**: Cần đạt **25%** total supply
+- **CONSTITUTIONAL**: Cần đạt **30%** total supply
+
+**Voting Process:**
+- **Voting Period**: ~7 ngày (50,400 blocks)
+- **Vote Options**: For (1), Against (0), Abstain (2)
+- **Majority Rule**: > 50% of votes cast phải agree
+- **Quorum Check**: Total votes ≥ quorum requirement
+
+**Ví dụ:**
+```
+STANDARD Proposal (10% quorum):
+- Total Supply: 5B HYRA
+- Quorum Required: 500M HYRA
+- Votes Cast: 600M HYRA
+  ├─ For: 400M (66.7%) ✅
+  ├─ Against: 150M (25%)
+  └─ Abstain: 50M (8.3%)
+- Result: PASS (quorum met + majority for)
+
+UPGRADE Proposal (25% quorum):
+- Total Supply: 5B HYRA
+- Quorum Required: 1.25B HYRA
+- Votes Cast: 1.5B HYRA
+  ├─ For: 1B (66.7%) ✅
+  ├─ Against: 400M (26.7%)
+  └─ Abstain: 100M (6.6%)
+- Result: PASS (quorum met + majority for)
+```
 
 #### **Bước 3: Execute**
-- Sau 2 ngày timelock delay
-- Governor execute → tạo mint request
-- Sau 2 ngày mint delay → mint tokens
+- **Queue**: Proposal được queue vào Timelock
+- **Timelock Delay**: Chờ 2 ngày (security delay)
+- **Execute Governor**: Tạo mint request
+- **Mint Delay**: Chờ 2 ngày (mint security delay)
+- **Execute Mint**: Mint tokens vào recipient
+
+---
+
+## 🏗️ Architecture & Standards
+
+### **OpenZeppelin Standards**
+
+HYRA DAO sử dụng các OpenZeppelin standards sau:
+
+#### **1. Token Standards (HyraToken)**
+```solidity
+├─ ERC20Upgradeable          // Standard ERC20 token
+├─ ERC20BurnableUpgradeable  // Burn mechanism
+├─ ERC20PermitUpgradeable    // Gasless approvals (EIP-2612)
+├─ ERC20VotesUpgradeable     // Voting power tracking
+├─ OwnableUpgradeable        // Ownership management
+├─ PausableUpgradeable       // Emergency pause
+└─ ReentrancyGuardUpgradeable // Reentrancy protection
+```
+
+**Key Features:**
+- ✅ **ERC20**: Standard token interface
+- ✅ **ERC20Votes**: Checkpoint-based voting power
+- ✅ **ERC20Permit**: Gasless approvals via signatures
+- ✅ **Burnable**: Deflationary mechanism
+- ✅ **Pausable**: Emergency stop mechanism
+- ✅ **Upgradeable**: Proxy pattern for upgrades
+
+#### **2. Governance Standards (HyraGovernor)**
+```solidity
+├─ GovernorUpgradeable                      // Core governance
+├─ GovernorSettingsUpgradeable              // Configurable parameters
+├─ GovernorCountingSimpleUpgradeable        // Simple vote counting
+├─ GovernorVotesUpgradeable                 // Token-based voting
+├─ GovernorVotesQuorumFractionUpgradeable   // Percentage-based quorum
+├─ GovernorTimelockControlUpgradeable       // Timelock integration
+└─ ReentrancyGuardUpgradeable               // Reentrancy protection
+```
+
+**Key Features:**
+- ✅ **Governor**: OpenZeppelin Governor standard
+- ✅ **Timelock**: 2-day delay for security
+- ✅ **Quorum**: Dynamic quorum based on proposal type
+- ✅ **Votes**: Checkpoint-based voting from ERC20Votes
+- ✅ **Upgradeable**: Can upgrade governance logic
+
+#### **3. Timelock Standards (HyraTimelock)**
+```solidity
+├─ TimelockControllerUpgradeable  // Timelock with role-based access
+├─ AccessControlUpgradeable       // Role management
+└─ ReentrancyGuardUpgradeable     // Reentrancy protection
+```
+
+**Key Features:**
+- ✅ **Timelock**: Delay execution for security
+- ✅ **Roles**: PROPOSER_ROLE, EXECUTOR_ROLE, ADMIN_ROLE
+- ✅ **Batch Operations**: Execute multiple calls atomically
+- ✅ **Upgradeable**: Can upgrade timelock logic
+
+### **Upgradeable Pattern**
+
+HYRA sử dụng **UUPS (Universal Upgradeable Proxy Standard)** pattern:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    UUPS PROXY PATTERN                       │
+└─────────────────────────────────────────────────────────────┘
+
+User
+  │
+  ▼
+┌──────────────────┐
+│  ERC1967Proxy    │  ← Proxy contract (immutable)
+│  (Storage)       │     Stores all state variables
+└────────┬─────────┘
+         │ delegatecall
+         ▼
+┌──────────────────┐
+│  Implementation  │  ← Logic contract (upgradeable)
+│  (Logic)         │     Contains all functions
+└──────────────────┘
+```
+
+**Upgrade Process:**
+1. Deploy new implementation contract
+2. Create DAO proposal to upgrade
+3. Vote and execute through Timelock
+4. Proxy points to new implementation
+5. All state preserved, new logic active
+
+**Security:**
+- ✅ Only governance can upgrade
+- ✅ 2-day timelock delay
+- ✅ Storage layout compatibility checked
+- ✅ Initializers protected with `_disableInitializers()`
+
+### **Security Features**
+
+#### **1. Access Control**
+```solidity
+// Token ownership
+HyraToken.owner() = HyraTimelock address
+
+// Timelock roles
+PROPOSER_ROLE  → HyraGovernor (can propose)
+EXECUTOR_ROLE  → Anyone (can execute after delay)
+ADMIN_ROLE     → Timelock itself (can manage roles)
+```
+
+#### **2. Multiple Delays**
+```
+Proposal → Vote → Queue → Timelock (2d) → Execute → Mint Delay (2d) → Mint
+                                ↑                           ↑
+                          Security Layer 1          Security Layer 2
+```
+
+#### **3. Reentrancy Protection**
+- Tất cả external functions có `nonReentrant` modifier
+- Prevents reentrancy attacks
+
+#### **4. Pausable**
+- Owner có thể pause token transfers trong emergency
+- Mint vẫn hoạt động (chỉ transfers bị pause)
+
+#### **5. Request Expiry**
+- Mint requests expire sau 1 năm
+- Prevents stale requests from being executed
 
 ---
 
@@ -313,39 +507,38 @@ RequestExpired()
 
 ## 📚 Tài Liệu Tham Khảo
 
-- **Contract**: `contracts/core/HyraToken.sol`
-- **Governor**: `contracts/core/HyraGovernor.sol`
-- **Timelock**: `contracts/core/HyraTimelock.sol`
-- **Tests**: `test/HyraToken.DAO.25Years.Full.test.ts`
-- **Docs EN**: `docs/DAO_MINT_MECHANISM_2025-2049.md`
+### **Smart Contracts**
+
+| Contract | Path | Description |
+|----------|------|-------------|
+| **HyraToken** | `contracts/core/HyraToken.sol` | ERC20 token with mint mechanism |
+| **HyraGovernor** | `contracts/core/HyraGovernor.sol` | DAO governance contract |
+| **HyraTimelock** | `contracts/core/HyraTimelock.sol` | Timelock controller |
+| **IHyraToken** | `contracts/interfaces/IHyraToken.sol` | Token interface |
+| **IHyraGovernor** | `contracts/interfaces/IHyraGovernor.sol` | Governor interface |
+
+### **Tests**
+
+| Test File | Description |
+|-----------|-------------|
+| `test/HyraToken.DAO.25Years.Full.test.ts` | Full 25-year mint test with burn |
+| `test/HyraToken.test.ts` | Token unit tests |
+| `test/HyraGovernor.test.ts` | Governor unit tests |
+
+### **Documentation**
+
+| Document | Language | Description |
+|----------|----------|-------------|
+| `docs/DAO_MINT_MECHANISM_2025-2049.md` | English | Full technical documentation |
+| `docs/DAO_MINT_MECHANISM_VI.md` | Tiếng Việt | Vietnamese summary |
+| `docs/DAO_MINT_VISUAL_GUIDE.md` | Visual | ASCII art diagrams |
+
+### **OpenZeppelin References**
+
+- **Governor**: https://docs.openzeppelin.com/contracts/4.x/governance
+- **ERC20Votes**: https://docs.openzeppelin.com/contracts/4.x/api/token/erc20#ERC20Votes
+- **Timelock**: https://docs.openzeppelin.com/contracts/4.x/api/governance#TimelockController
+- **Upgradeable**: https://docs.openzeppelin.com/upgrades-plugins/1.x/
+- **UUPS**: https://eips.ethereum.org/EIPS/eip-1822
 
 ---
-
-## ❓ FAQ
-
-### **Q: Tại sao phải burn 50%?**
-A: Để giữ quorum manageable. Nếu không burn, sau năm 10 sẽ không thể vote được.
-
-### **Q: Có thể thay đổi burn rate không?**
-A: Có, nhưng cần tính toán kỹ để đảm bảo quorum < voting power.
-
-### **Q: Nếu không mint hết capacity của năm thì sao?**
-A: Capacity không được carry over. Năm sau sẽ có capacity mới.
-
-### **Q: Có thể mint trước 01/01/2025 không?**
-A: Không. Contract sẽ revert với error `MintingPeriodNotStarted()`.
-
-### **Q: Sau 31/12/2049 có thể mint không?**
-A: Không. Contract sẽ revert với error `MintingPeriodEnded()`.
-
-### **Q: Request expire thì sao?**
-A: Sau 1 năm, request tự động expire. Owner có thể cleanup để clear pending.
-
-### **Q: Có thể cancel request không?**
-A: Có, owner (Timelock) có thể cancel request chưa execute.
-
----
-
-**Cập nhật**: 2024  
-**Phiên bản**: 1.0.0  
-**Trạng thái**: ✅ Sẵn sàng Production
