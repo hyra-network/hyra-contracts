@@ -124,13 +124,15 @@ contract HyraToken is
      * @param _initialSupply Initial token supply
      * @param _vestingContract Address of the vesting contract for secure distribution
      * @param _governance Initial governance address
+     * @param _yearStartTime Unix timestamp for Year 1 start (0 = use block.timestamp). Example: 1735689600 = Jan 1, 2025 00:00:00 UTC
      */
     function initialize(
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply,
         address _vestingContract,
-        address _governance
+        address _governance,
+        uint256 _yearStartTime
     ) public initializer validAddress(_vestingContract) validAddress(_governance) {
         __ERC20_init(_name, _symbol);
         __ERC20Burnable_init();
