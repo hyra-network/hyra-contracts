@@ -505,6 +505,7 @@ RequestExpired()
 
 ---
 
+<<<<<<< HEAD
 ## 📚 Tài Liệu Tham Khảo
 
 ### **Smart Contracts**
@@ -542,3 +543,5 @@ RequestExpired()
 - **UUPS**: https://eips.ethereum.org/EIPS/eip-1822
 
 ---
+=======
+>>>>>>> 522d9d515c9d088e9a08a590a854a78dd2caa877
