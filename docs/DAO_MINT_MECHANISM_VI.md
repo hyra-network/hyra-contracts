@@ -1,0 +1,351 @@
+# 🏛️ CƠ CHẾ MINT DAO 25 NĂM (2025-2049)
+
+## 📋 Tóm Tắt
+
+HYRA Token có cơ chế mint phân tầng qua DAO trong 25 năm, từ **01/01/2025** đến **31/12/2049**.
+
+---
+
+## 🗓️ Lịch Trình Mint
+
+### **Bảng Tổng Hợp**
+
+| Năm | Giai Đoạn | Mint/Năm | Tổng Mint | Thời Gian |
+|-----|-----------|----------|-----------|-----------|
+| 1 | Pre-mint | 2.5 tỷ | 2.5 tỷ | 2025 |
+| 2-10 | Tier 1 | 2.5 tỷ | 22.5 tỷ | 2026-2034 |
+| 11-15 | Tier 2 | 1.5 tỷ | 7.5 tỷ | 2035-2039 |
+| 16-25 | Tier 3 | 750 triệu | 7.5 tỷ | 2040-2049 |
+| **TỔNG** | - | - | **40 tỷ** | **25 năm** |
+
+### **Chi Tiết Từng Giai Đoạn**
+
+#### **Năm 1 (2025): Pre-mint**
+- ✅ Mint ngay khi deploy: **2.5 tỷ HYRA**
+- 📦 Vào Vesting Contract
+- 🎯 Mục đích: Team, investors, community
+
+#### **Năm 2-10 (2026-2034): Giai Đoạn Tăng Trưởng**
+- 📈 **2.5 tỷ HYRA/năm** × 9 năm = **22.5 tỷ HYRA**
+- 🚀 Giai đoạn phát triển mạnh ecosystem
+- 🏛️ Mint qua DAO governance
+
+#### **Năm 11-15 (2035-2039): Giai Đoạn Ổn Định**
+- 📊 **1.5 tỷ HYRA/năm** × 5 năm = **7.5 tỷ HYRA**
+- ⚖️ Giảm tốc độ mint, ecosystem ổn định
+- 🏛️ Mint qua DAO governance
+
+#### **Năm 16-25 (2040-2049): Giai Đoạn Bền Vững**
+- 🌱 **750 triệu HYRA/năm** × 10 năm = **7.5 tỷ HYRA**
+- 🎯 Mint tối thiểu, tập trung bền vững
+- 🏛️ Mint qua DAO governance
+
+---
+
+## 🔄 Quy Trình Mint
+
+### **Timeline: ~11 Ngày**
+
+```
+1. Tạo Proposal (DAO Member)
+   ↓
+2. Voting Delay: 1 block
+   ↓
+3. Voting Period: ~7 ngày (50,400 blocks)
+   ↓
+4. Queue vào Timelock
+   ↓
+5. Timelock Delay: 2 ngày
+   ↓
+6. Execute → Tạo Mint Request
+   ↓
+7. Mint Delay: 2 ngày
+   ↓
+8. Execute Mint → Nhận Tokens
+```
+
+### **Các Bước Chi Tiết**
+
+#### **Bước 1: Tạo Proposal**
+- DAO member tạo proposal mint tokens
+- Ghi rõ: recipient, amount, purpose
+
+#### **Bước 2: Vote**
+- Cần đạt **quorum 10%** total supply
+- Voting period: ~7 ngày
+- Majority vote: > 50% agree
+
+#### **Bước 3: Execute**
+- Sau 2 ngày timelock delay
+- Governor execute → tạo mint request
+- Sau 2 ngày mint delay → mint tokens
+
+---
+
+## 📊 Tokenomics
+
+### **Supply Distribution**
+
+```
+Max Supply: 50 tỷ HYRA (100%)
+├─ Mintable: 40 tỷ HYRA (80%)
+│  ├─ Year 1: 2.5 tỷ (5%)
+│  ├─ Year 2-10: 22.5 tỷ (45%)
+│  ├─ Year 11-15: 7.5 tỷ (15%)
+│  └─ Year 16-25: 7.5 tỷ (15%)
+└─ Reserved: 10 tỷ HYRA (20%) - Không bao giờ mint
+```
+
+### **Mint Rate Giảm Dần**
+
+```
+📈 Year 1:     2.5 tỷ/năm (5% max supply)
+📈 Year 2-10:  2.5 tỷ/năm (5% max supply)
+📊 Year 11-15: 1.5 tỷ/năm (3% max supply)
+📉 Year 16-25: 750M/năm (1.5% max supply)
+```
+
+**Lý do**: Giảm inflation theo thời gian, tạo scarcity
+
+---
+
+## ⚠️ Vấn Đề Quorum
+
+### **Vấn Đề**
+
+Khi supply tăng → quorum tăng → có thể không đủ voting power để vote!
+
+**Ví dụ:**
+```
+Year 1:  Supply = 2.5 tỷ  → Quorum = 250M  → VP = 2.4 tỷ ✅
+Year 10: Supply = 25 tỷ   → Quorum = 2.5 tỷ → VP = 2.4 tỷ ❌
+Year 11: Không thể vote được! ❌
+```
+
+### **Giải Pháp: Burn Mechanism** ✅
+
+**Burn 50% tokens sau mỗi lần mint:**
+
+```typescript
+// Sau khi mint
+const burnAmount = (mintAmount * 50n) / 100n;
+await token.burn(burnAmount);
+```
+
+**Kết quả:**
+```
+Year 1:  Mint 2.5 tỷ, Burn 0      → Supply = 2.5 tỷ
+Year 2:  Mint 2.5 tỷ, Burn 1.25 tỷ → Supply = 3.75 tỷ
+Year 3:  Mint 2.5 tỷ, Burn 1.25 tỷ → Supply = 5 tỷ
+...
+Year 25: Mint 750M, Burn 375M    → Supply = 21.25 tỷ
+
+Final: Supply = 21.25 tỷ → Quorum = 2.125 tỷ < VP = 2.4 tỷ ✅
+```
+
+### **Test Results**
+
+#### **Scenario A: KHÔNG Burn**
+```
+✅ Year 1-10: Thành công (25 tỷ minted)
+❌ Year 11: FAIL - Quorum quá cao!
+```
+
+#### **Scenario B: CÓ Burn 50%**
+```
+✅ Year 1-25: TẤT CẢ THÀNH CÔNG!
+✅ Total Minted: 40 tỷ HYRA
+✅ Total Burned: 18.75 tỷ HYRA
+✅ Final Supply: 21.25 tỷ HYRA
+✅ Quorum: 2.125 tỷ < Voting Power: 2.4 tỷ ✅
+```
+
+---
+
+## 🔒 Bảo Mật
+
+### **1. Annual Cap**
+- Mỗi năm có giới hạn riêng
+- Không thể mint vượt quá cap
+- Tracking: `mintedByYear[year]` + `pendingByYear[year]`
+
+### **2. Pending Tracking**
+- Tạo request: Reserve capacity
+- Execute: Clear pending, update minted
+- Cancel: Clear pending
+
+### **3. Year Tracking**
+- Mỗi request lưu `yearCreated`
+- Đảm bảo tracking đúng năm
+- Không bị lỗi khi year transition
+
+### **4. Multiple Delays**
+- Timelock delay: 2 ngày
+- Mint delay: 2 ngày
+- **Total: 4 ngày** từ vote đến mint
+
+### **5. Request Expiry**
+- Mỗi request có hạn 1 năm
+- Tự động expire sau 1 năm
+- Owner có thể cleanup
+
+---
+
+## 📝 Các Hàm Quan Trọng
+
+### **Check Capacity**
+```solidity
+// Capacity còn lại năm hiện tại
+token.getRemainingMintCapacity()
+
+// Capacity của năm cụ thể
+token.getRemainingMintCapacityForYear(year)
+```
+
+### **Check Minted**
+```solidity
+// Đã mint năm hiện tại
+token.getMintedThisYear()
+
+// Đã mint năm cụ thể
+token.getMintedAmountForYear(year)
+```
+
+### **Check State**
+```solidity
+// Năm hiện tại (1-25)
+token.currentMintYear()
+
+// Tier hiện tại (1, 2, 3)
+token.getCurrentMintTier()
+
+// Thời gian đến năm sau
+token.getTimeUntilNextMintYear()
+```
+
+---
+
+## 🚨 Lỗi Thường Gặp
+
+```solidity
+// Trước 01/01/2025
+MintingPeriodNotStarted()
+
+// Sau 31/12/2049
+MintingPeriodEnded()
+
+// Vượt annual cap
+ExceedsAnnualMintCap(requested, available)
+
+// Vượt max supply
+ExceedsMaxSupply(resultingSupply, maxSupply)
+
+// Request đã execute
+AlreadyExecuted()
+
+// Chưa đủ delay
+MintDelayNotMet()
+
+// Request expire
+RequestExpired()
+```
+
+---
+
+## 💡 Best Practices
+
+### **Cho DAO Members**
+
+1. ⏰ **Plan trước**: Mint cần ~11 ngày
+2. 📊 **Check capacity**: Xem còn bao nhiêu trước khi propose
+3. 📝 **Ghi rõ mục đích**: Purpose phải clear
+4. 👀 **Monitor quorum**: Theo dõi quorum vs voting power
+
+### **Cho Developers**
+
+1. 🔧 **Dùng yearCreated**: Track requests đúng năm
+2. 🧹 **Cleanup expired**: Dọn dẹp requests cũ
+3. 🧪 **Test kỹ**: Test edge cases
+4. 📡 **Monitor events**: Listen mint events
+
+### **Cho Governance**
+
+1. 📅 **Annual planning**: Plan mint cho cả năm
+2. 🔥 **Burn strategy**: Quyết định burn rate
+3. 🚨 **Emergency plan**: Có plan cho emergency
+4. 🔍 **Transparency**: Public tất cả decisions
+
+---
+
+## 📈 Ví Dụ Thực Tế
+
+### **Năm 2026 (Year 2)**
+
+```
+1. Ngày 15/01/2026: DAO member tạo proposal
+   - Mint 2.5 tỷ HYRA
+   - Recipient: Treasury
+   - Purpose: "Ecosystem development Q1 2026"
+
+2. Ngày 15-22/01: Voting period
+   - Total votes: 3 tỷ HYRA
+   - Quorum: 375M HYRA (10% of 3.75 tỷ)
+   - Result: 85% agree ✅
+
+3. Ngày 22/01: Queue vào Timelock
+
+4. Ngày 24/01: Execute Governor
+   - Tạo mint request #1
+   - yearCreated = 2
+
+5. Ngày 26/01: Execute Mint
+   - Mint 2.5 tỷ HYRA vào Treasury
+   - Burn 1.25 tỷ HYRA (50%)
+   - Net: +1.25 tỷ supply
+
+6. Tracking:
+   - mintedByYear[2] = 2.5 tỷ
+   - pendingByYear[2] = 0
+   - Remaining capacity: 0
+```
+
+---
+
+## 📚 Tài Liệu Tham Khảo
+
+- **Contract**: `contracts/core/HyraToken.sol`
+- **Governor**: `contracts/core/HyraGovernor.sol`
+- **Timelock**: `contracts/core/HyraTimelock.sol`
+- **Tests**: `test/HyraToken.DAO.25Years.Full.test.ts`
+- **Docs EN**: `docs/DAO_MINT_MECHANISM_2025-2049.md`
+
+---
+
+## ❓ FAQ
+
+### **Q: Tại sao phải burn 50%?**
+A: Để giữ quorum manageable. Nếu không burn, sau năm 10 sẽ không thể vote được.
+
+### **Q: Có thể thay đổi burn rate không?**
+A: Có, nhưng cần tính toán kỹ để đảm bảo quorum < voting power.
+
+### **Q: Nếu không mint hết capacity của năm thì sao?**
+A: Capacity không được carry over. Năm sau sẽ có capacity mới.
+
+### **Q: Có thể mint trước 01/01/2025 không?**
+A: Không. Contract sẽ revert với error `MintingPeriodNotStarted()`.
+
+### **Q: Sau 31/12/2049 có thể mint không?**
+A: Không. Contract sẽ revert với error `MintingPeriodEnded()`.
+
+### **Q: Request expire thì sao?**
+A: Sau 1 năm, request tự động expire. Owner có thể cleanup để clear pending.
+
+### **Q: Có thể cancel request không?**
+A: Có, owner (Timelock) có thể cancel request chưa execute.
+
+---
+
+**Cập nhật**: 2024  
+**Phiên bản**: 1.0.0  
+**Trạng thái**: ✅ Sẵn sàng Production
