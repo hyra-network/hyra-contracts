@@ -118,13 +118,15 @@ contract HyraToken is
      * @param _initialSupply Initial token supply
      * @param _vestingContract Address of the vesting contract for secure distribution
      * @param _governance Initial governance address
+     * @param _yearStartTime Unix timestamp for Year 1 start (0 = use block.timestamp). Example: 1735689600 = Jan 1, 2025 00:00:00 UTC
      */
     function initialize(
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply,
         address _vestingContract,
-        address _governance
+        address _governance,
+        uint256 _yearStartTime
     ) public initializer validAddress(_vestingContract) validAddress(_governance) {
         __ERC20_init(_name, _symbol);
         __ERC20Burnable_init();
@@ -151,8 +153,19 @@ contract HyraToken is
         
         // Initialize mint year tracking
         currentMintYear = 1;
-        mintYearStartTime = block.timestamp;
-        originalMintYearStartTime = block.timestamp; // Store original start time
+        
+        // If _yearStartTime is provided and valid, use it; otherwise use block.timestamp
+        // Validate: must be within reasonable range (not too far in past/future)
+        if (_yearStartTime > 0) {
+            require(_yearStartTime <= block.timestamp + 365 days, "Year start time too far in future");
+            require(_yearStartTime >= block.timestamp - 365 days, "Year start time too far in past");
+            mintYearStartTime = _yearStartTime;
+            originalMintYearStartTime = _yearStartTime;
+        } else {
+            // Default to current timestamp if not specified
+            mintYearStartTime = block.timestamp;
+            originalMintYearStartTime = block.timestamp;
+        }
     }
     
     // Legacy initializer removed to eliminate single-holder initial distribution path
