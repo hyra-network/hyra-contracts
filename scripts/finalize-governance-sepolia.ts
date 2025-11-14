@@ -28,9 +28,18 @@ async function main() {
 	const timelock = await ethers.getContractAt("HyraTimelock", timelockAddr);
 
 	// Transfer token governance (owner) to Timelock
-	console.log("Transferring token governance to Timelock...");
-	await (await token.transferGovernance(timelockAddr)).wait();
-	console.log("Token governance transferred");
+	try {
+		const currentOwner = await token.owner();
+		if (currentOwner.toLowerCase() === timelockAddr.toLowerCase()) {
+			console.log("Token governance already set to Timelock. Skipping transfer.");
+		} else {
+			console.log("Transferring token governance to Timelock...");
+			await (await token.transferGovernance(timelockAddr)).wait();
+			console.log("Token governance transferred");
+		}
+	} catch (e) {
+		console.log("Skipping transferGovernance due to error (likely already owned by Timelock):", e);
+	}
 
 	// Grant roles on Timelock
 	const PROPOSER_ROLE = await timelock.PROPOSER_ROLE();

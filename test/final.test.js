@@ -9,7 +9,7 @@ describe("Final Comprehensive Testing", function () {
         it("should test all basic HyraToken functions", async function () {
             const { token, timelock, voter1, voter2, alice, bob } = await (0, hardhat_network_helpers_1.loadFixture)(fixtures_1.deployCore);
             // Test basic ERC20 functions
-            (0, chai_1.expect)(await token.name()).to.eq("Hyra Token");
+            (0, chai_1.expect)(await token.name()).to.eq("HYRA");
             (0, chai_1.expect)(await token.symbol()).to.eq("HYRA");
             (0, chai_1.expect)(await token.decimals()).to.eq(18);
             (0, chai_1.expect)(await token.totalSupply()).to.eq(fixtures_1.INITIAL_SUPPLY);

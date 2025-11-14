@@ -15,7 +15,7 @@ describe("Simple DAO Testing", function () {
       const { token, governor, timelock, proxyAdmin, proxyDeployer } = await loadFixture(deployCore);
       
       // Check token
-      expect(await token.name()).to.eq("Hyra Token");
+      expect(await token.name()).to.eq("HYRA");
       expect(await token.symbol()).to.eq("HYRA");
       expect(await token.totalSupply()).to.eq(INITIAL_SUPPLY);
       

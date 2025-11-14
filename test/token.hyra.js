@@ -7,7 +7,7 @@ const fixtures_1 = require("./helpers/fixtures");
 describe("HyraToken", function () {
     it("initializes with name/symbol, supply to voter1, owner=Timelock, delegation works", async function () {
         const { token, timelock, voter1, voter2 } = await (0, hardhat_network_helpers_1.loadFixture)(fixtures_1.deployCore);
-        (0, chai_1.expect)(await token.name()).to.eq("Hyra Token");
+        (0, chai_1.expect)(await token.name()).to.eq("HYRA");
         (0, chai_1.expect)(await token.symbol()).to.eq("HYRA");
         (0, chai_1.expect)(await token.balanceOf(voter1.address)).to.eq(fixtures_1.INITIAL_SUPPLY - hardhat_1.ethers.parseEther("400000"));
         (0, chai_1.expect)(await token.balanceOf(voter2.address)).to.eq(hardhat_1.ethers.parseEther("400000"));

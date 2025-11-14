@@ -1,0 +1,26 @@
+{
+  "network": "baseSepolia",
+  "deployedAt": "2025-11-07T08:15:25.093Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "WARNING": "FAST TEST CONTRACTS - 2 MINUTE DELAY - DO NOT USE IN PRODUCTION",
+  "delays": {
+    "MINT_EXECUTION_DELAY": "2 minutes",
+    "TIMELOCK_MIN_DELAY": "1 minute",
+    "REQUEST_EXPIRY_PERIOD": "7 days"
+  },
+  "infra": {
+    "secureProxyAdmin": "0x125A81C7324487702F9e8137398e26cC9178F4F1",
+    "hyraProxyDeployer": "0x4bd57b314dF8f24bC3C781DA6f9361eFDFC9Db28",
+    "secureExecutorManager": "0x0A46F5d399dA2b284116fc8a5E2dA72964871311",
+    "proxyAdminValidator": "0xFCf3A07F97f68b827b2717133B2A35D638B85961"
+  },
+  "vestingImpl": "0xcAEF6125f5c1Daa259E4C07657D9FB43967E2A87",
+  "vestingProxy": "0x0ce1C9420A849B222d12d7858A405851fd126100",
+  "tokenImpl": "0x4484BCAed4c352BE9D999c75b77C6c4f8E3B2B8F",
+  "tokenProxy": "0x328EFee391064a70114e23a58Cb07F75F4dD9621",
+  "timelockImpl": "0x854172FC4775b77C63A50fBe205cBd9B8025de32",
+  "timelockProxy": "0x3f5aa7884Ef5C9517cAf1b6403Fe6754136fbB05",
+  "governorImpl": "0xA6d72d28169d0624d3f97c0eC31Bdc93a1fE77Ab",
+  "governorProxy": "0xC1B424098EB91e6D9acE5E6D960eBf72E42fba3a",
+  "owner": "0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2"
+}

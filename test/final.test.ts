@@ -15,7 +15,7 @@ describe("Final Comprehensive Testing", function () {
       const { token, timelock, voter1, voter2, alice, bob } = await loadFixture(deployCore);
       
       // Test basic ERC20 functions
-      expect(await token.name()).to.eq("Hyra Token");
+      expect(await token.name()).to.eq("HYRA");
       expect(await token.symbol()).to.eq("HYRA");
       expect(await token.decimals()).to.eq(18);
       expect(await token.totalSupply()).to.eq(INITIAL_SUPPLY);

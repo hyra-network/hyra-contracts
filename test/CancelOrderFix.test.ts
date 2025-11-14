@@ -36,7 +36,7 @@ describe("Cancel Order Fix - Execution Order Test", function () {
         const tokenImpl = await HyraTokenFactory.deploy();
         await tokenImpl.waitForDeployment();
         const tokenInitData = HyraTokenFactory.interface.encodeFunctionData("initialize", [
-            "Hyra Token",
+            "HYRA",
             "HYRA",
             ethers.parseEther("10000000"), // 10M initial supply
             owner.address, // vesting recipient (for test simplicity)

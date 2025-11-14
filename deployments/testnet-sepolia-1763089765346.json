@@ -1,0 +1,42 @@
+{
+  "network": "sepolia",
+  "deployedAt": "2025-11-14T03:09:25.345Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "type": "Testnet with Production Settings",
+  "initialSupply": "2500000000",
+  "initialSupplyNote": "FULL Year 1 quota - cannot mint more until Year 2",
+  "initialSupplyRecipient": "0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2",
+  "safeMultisig": "0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2",
+  "tokenOwner": "0xa6fEF081767eF4b542d14Dc6c1119fD43814745d",
+  "ownershipNote": "HyraToken owner = HyraTimelock (DAO). All mint requests must go through governance.",
+  "yearStartTime": 1735689600,
+  "yearStartDate": "2025-01-01T00:00:00.000Z",
+  "year2StartDate": "2026-01-01T00:00:00.000Z",
+  "delays": {
+    "MINT_EXECUTION_DELAY": "2 days",
+    "TIMELOCK_MIN_DELAY": "2 days",
+    "REQUEST_EXPIRY_PERIOD": "365 days",
+    "YEAR_DURATION": "365 days"
+  },
+  "tokenomics": {
+    "maxSupply": "50000000000",
+    "initialSupply": "2500000000",
+    "year1Remaining": "0",
+    "nextMintAvailable": "Year 2 (after Jan 1, 2026)",
+    "initialSupplyRecipient": "Safe Multisig"
+  },
+  "infra": {
+    "secureProxyAdmin": "0xEA897be14eaD99e6F048bE69E456C17A07aBD3F9",
+    "hyraProxyDeployer": "0xb280e2a043723AE29fEaEF818C7001fD740860bb",
+    "secureExecutorManager": "0xa77BC1a87F858f1BDB2B575063c3842A1941203a",
+    "proxyAdminValidator": "0xd8740E2C8524553932961bCE757c4ee94D731034"
+  },
+  "vestingImpl": "0xD545021f06B18f930275094a335cf0179aE91991",
+  "vestingProxy": "0xCe81daCcCcE5eeCd6E8A4014Aa39D964922DA9A8",
+  "tokenImpl": "0xB7C4b5F7fb7cfE36D7B537FBA96516e75E1A8e13",
+  "tokenProxy": "0xA937a0818bD7A378385E4985f343eA2DFFA01d42",
+  "timelockImpl": "0xb6A8Faf491bAB929a2AF120258C0CfcD27Ad0F94",
+  "timelockProxy": "0xa6fEF081767eF4b542d14Dc6c1119fD43814745d",
+  "governorImpl": "0x5c9284A2993b5923E77AFA2165C3cafDe8BE7088",
+  "governorProxy": "0x49c7DE02e620eD5005Fa4972ccfa420E3F229FfA"
+}

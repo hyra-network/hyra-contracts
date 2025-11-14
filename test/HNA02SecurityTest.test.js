@@ -36,7 +36,7 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
         const tokenProxy = await HyraProxy.deploy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), "0x");
         token = HyraToken.attach(await tokenProxy.getAddress());
         // Initialize token
-        await token.initialize("Hyra Token", "HYRA", hardhat_1.ethers.parseEther("1000000"), await owner.getAddress(), // Mock vesting contract (placeholder)
+        await token.initialize("HYRA", "HYRA", hardhat_1.ethers.parseEther("1000000"), await owner.getAddress(), // Mock vesting contract (placeholder)
         await owner.getAddress() // Owner is test owner
         );
         // 4. Add proxy to management

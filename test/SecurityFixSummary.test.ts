@@ -56,7 +56,7 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     await tokenImpl.waitForDeployment();
     
     const tokenInit = Token.interface.encodeFunctionData("initialize", [
-      "Hyra Token Secure",
+      "HYRA",
       "HYRA-S",
       INITIAL_SUPPLY,
       vestingProxy, // Use vesting contract instead of single holder

@@ -58,7 +58,7 @@ describe("Attack Scenarios Tests", function () {
     const governor = HyraGovernor.attach(await governorProxy.getAddress());
 
     const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
-      "Hyra Token",
+      "HYRA",
       "HYRA",
       ethers.parseEther("1000000"),
       await alice.getAddress(), 

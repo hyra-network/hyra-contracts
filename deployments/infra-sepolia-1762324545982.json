@@ -1,0 +1,7 @@
+{
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "secureProxyAdmin": "0xe1b713bb771d05c4d7a772b2489213A7B7833c0c",
+  "hyraProxyDeployer": "0x57398D90F3D5DB72229ed88a5D1136a884593fB8",
+  "secureExecutorManager": "0x77aDB81eA92940480160AfEbafa96de2EeE32bd4",
+  "proxyAdminValidator": "0xdA40F81ad7935bf4404cFA2D6FCEa8C1006fA591"
+}

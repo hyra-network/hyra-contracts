@@ -75,7 +75,7 @@ class MultiSigUpgradeSetup {
   async createSecureDAOConfig(multisigAddress: string) {
     const daoConfig = {
       // Token config
-      tokenName: "Hyra Token",
+      tokenName: "HYRA",
       tokenSymbol: "HYRA",
       initialSupply: ethers.parseEther("2500000000"), // 2.5B tokens
       

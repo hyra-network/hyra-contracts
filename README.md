@@ -13,7 +13,7 @@ Built with **Hardhat** and **OpenZeppelin** upgradeable libraries, it empowers c
 
 ---
 
-## **Hyra Token**
+## **HYRA Token**
 The heart of the ecosystem - **HyraToken** - is a governance-ready, upgradeable ERC20 with built-in safeguards:
 
 - **2.5B HYRA** initial supply at launch.  
