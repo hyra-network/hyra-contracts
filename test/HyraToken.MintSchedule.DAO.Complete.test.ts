@@ -278,10 +278,10 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
     });
 
     it("✅ 1.5: Quorum levels đúng", async function () {
-      const standardQuorum = await governor.STANDARD_QUORUM();
-      const emergencyQuorum = await governor.EMERGENCY_QUORUM();
-      const upgradeQuorum = await governor.UPGRADE_QUORUM();
-      const constitutionalQuorum = await governor.CONSTITUTIONAL_QUORUM();
+      const standardQuorum = await governor.standardQuorum();
+      const emergencyQuorum = await governor.emergencyQuorum();
+      const upgradeQuorum = await governor.upgradeQuorum();
+      const constitutionalQuorum = await governor.constitutionalQuorum();
       
       expect(standardQuorum).to.equal(1000n); // 10%
       expect(emergencyQuorum).to.equal(2000n); // 20%
@@ -674,12 +674,12 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       console.log(`   📊 Standard quorum: ${ethers.formatEther(quorum)} HYRA (10%)`);
     });
 
-    it("✅ 4.2: Verify quorum constants", async function () {
-      // Just verify the quorum constants are set correctly
-      const standardQuorum = await governor.STANDARD_QUORUM();
-      const emergencyQuorum = await governor.EMERGENCY_QUORUM();
-      const upgradeQuorum = await governor.UPGRADE_QUORUM();
-      const constitutionalQuorum = await governor.CONSTITUTIONAL_QUORUM();
+    it("✅ 4.2: Verify quorum values", async function () {
+      // Just verify the quorum values are set correctly
+      const standardQuorum = await governor.standardQuorum();
+      const emergencyQuorum = await governor.emergencyQuorum();
+      const upgradeQuorum = await governor.upgradeQuorum();
+      const constitutionalQuorum = await governor.constitutionalQuorum();
       
       expect(standardQuorum).to.equal(1000n); // 10%
       expect(emergencyQuorum).to.equal(2000n); // 20%

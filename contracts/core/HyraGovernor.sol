@@ -44,18 +44,18 @@ contract HyraGovernor is
     // DAO Role Manager for decentralized role management
     DAORoleManager public roleManager;
     
-    // Quorum percentages (basis points)
+    // Quorum percentages (basis points) - Updatable by owner
     // Hierarchy: STANDARD < EMERGENCY < UPGRADE < CONSTITUTIONAL
-    uint256 public constant STANDARD_QUORUM = 1000; // 10% - Regular proposals
-    uint256 public constant EMERGENCY_QUORUM = 2000; // 20% - Emergency proposals (increased for security)
-    uint256 public constant UPGRADE_QUORUM = 2500; // 25% - Contract upgrades
-    uint256 public constant CONSTITUTIONAL_QUORUM = 3000; // 30% - Constitutional changes
+    uint256 public standardQuorum; // Default: 10% - Regular proposals
+    uint256 public emergencyQuorum; // Default: 20% - Emergency proposals (increased for security)
+    uint256 public upgradeQuorum; // Default: 25% - Contract upgrades
+    uint256 public constitutionalQuorum; // Default: 30% - Constitutional changes
     
     // Minimum quorum to prevent governance attacks
     uint256 public constant MINIMUM_QUORUM = 100; // 1% minimum
     
     // Storage gap for upgradeability
-    uint256[44] private __gap;
+    uint256[40] private __gap;
 
     // ============ Events ============
     event ProposalTypeSet(uint256 indexed proposalId, ProposalType proposalType);
@@ -69,6 +69,10 @@ contract HyraGovernor is
     );
     event QuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
     event VoteCasted(address indexed voter, uint256 proposalId, uint8 support, uint256 weight);
+    event StandardQuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
+    event EmergencyQuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
+    event UpgradeQuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
+    event ConstitutionalQuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
 
     // ============ Errors ============
     error InvalidProposalType();
@@ -81,6 +85,9 @@ contract HyraGovernor is
     error ZeroAddress();
     error ProposalNotFound();
     error VotingNotActive();
+    error InvalidQuorumValue();
+    error QuorumHierarchyViolated();
+    error OnlyGovernanceExecution();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -112,6 +119,12 @@ contract HyraGovernor is
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(_quorumPercentage);
         __GovernorTimelockControl_init(_timelock);
+        
+        // Initialize quorum values with defaults
+        standardQuorum = 1000; // 10%
+        emergencyQuorum = 2000; // 20%
+        upgradeQuorum = 2500; // 25%
+        constitutionalQuorum = 3000; // 30%
     }
 
     // ============ Proposal Functions ============
@@ -217,6 +230,129 @@ contract HyraGovernor is
         // FIXED: Add zero address validation
         if (address(_roleManager) == address(0)) revert ZeroAddress();
         roleManager = _roleManager;
+    }
+
+    // ============ Modifiers ============
+    
+    /**
+     * @notice Modifier to ensure function is only called from governance execution
+     * @dev This ensures functions can only be called via proposal execution through timelock
+     * In OpenZeppelin Governor with TimelockControl, when a proposal is executed:
+     * 1. governor.execute() is called
+     * 2. timelock.execute() is called
+     * 3. timelock calls governor._executeOperations()
+     * 4. _executeOperations() calls target.call(calldata)
+     * So msg.sender will be the timelock (executor), which is what we want to allow
+     */
+    modifier onlyGovernanceExecution() {
+        // Check if called from the executor (timelock)
+        // This ensures it's from proposal execution, not a direct call
+        address executor = _executor();
+        if (msg.sender != executor) {
+            revert OnlyGovernanceExecution();
+        }
+        _;
+    }
+
+    // ============ Quorum Management Functions ============
+    
+    /**
+     * @notice Set standard quorum percentage (only governance via proposal execution)
+     * @param _quorum New quorum percentage in basis points
+     * @dev Can only be called via governance proposal execution, not directly from timelock
+     */
+    function setStandardQuorum(uint256 _quorum) external onlyGovernanceExecution {
+        if (_quorum < MINIMUM_QUORUM || _quorum > 10000) revert InvalidQuorumValue();
+        if (_quorum >= emergencyQuorum) revert QuorumHierarchyViolated();
+        
+        uint256 oldQuorum = standardQuorum;
+        standardQuorum = _quorum;
+        emit StandardQuorumUpdated(oldQuorum, _quorum);
+    }
+    
+    /**
+     * @notice Set emergency quorum percentage (only governance via proposal execution)
+     * @param _quorum New quorum percentage in basis points
+     * @dev Can only be called via governance proposal execution, not directly from timelock
+     */
+    function setEmergencyQuorum(uint256 _quorum) external onlyGovernanceExecution {
+        if (_quorum < MINIMUM_QUORUM || _quorum > 10000) revert InvalidQuorumValue();
+        if (_quorum <= standardQuorum || _quorum >= upgradeQuorum) revert QuorumHierarchyViolated();
+        
+        uint256 oldQuorum = emergencyQuorum;
+        emergencyQuorum = _quorum;
+        emit EmergencyQuorumUpdated(oldQuorum, _quorum);
+    }
+    
+    /**
+     * @notice Set upgrade quorum percentage (only governance via proposal execution)
+     * @param _quorum New quorum percentage in basis points
+     * @dev Can only be called via governance proposal execution, not directly from timelock
+     */
+    function setUpgradeQuorum(uint256 _quorum) external onlyGovernanceExecution {
+        if (_quorum < MINIMUM_QUORUM || _quorum > 10000) revert InvalidQuorumValue();
+        if (_quorum <= emergencyQuorum || _quorum >= constitutionalQuorum) revert QuorumHierarchyViolated();
+        
+        uint256 oldQuorum = upgradeQuorum;
+        upgradeQuorum = _quorum;
+        emit UpgradeQuorumUpdated(oldQuorum, _quorum);
+    }
+    
+    /**
+     * @notice Set constitutional quorum percentage (only governance via proposal execution)
+     * @param _quorum New quorum percentage in basis points
+     * @dev Can only be called via governance proposal execution, not directly from timelock
+     */
+    function setConstitutionalQuorum(uint256 _quorum) external onlyGovernanceExecution {
+        if (_quorum < MINIMUM_QUORUM || _quorum > 10000) revert InvalidQuorumValue();
+        if (_quorum <= upgradeQuorum) revert QuorumHierarchyViolated();
+        
+        uint256 oldQuorum = constitutionalQuorum;
+        constitutionalQuorum = _quorum;
+        emit ConstitutionalQuorumUpdated(oldQuorum, _quorum);
+    }
+    
+    /**
+     * @notice Set all quorum values at once (only governance via proposal execution)
+     * @param _standardQuorum Standard quorum in basis points
+     * @param _emergencyQuorum Emergency quorum in basis points
+     * @param _upgradeQuorum Upgrade quorum in basis points
+     * @param _constitutionalQuorum Constitutional quorum in basis points
+     * @dev Can only be called via governance proposal execution, not directly from timelock
+     */
+    function setAllQuorums(
+        uint256 _standardQuorum,
+        uint256 _emergencyQuorum,
+        uint256 _upgradeQuorum,
+        uint256 _constitutionalQuorum
+    ) external onlyGovernanceExecution {
+        // Validate all values
+        if (_standardQuorum < MINIMUM_QUORUM || _standardQuorum > 10000) revert InvalidQuorumValue();
+        if (_emergencyQuorum < MINIMUM_QUORUM || _emergencyQuorum > 10000) revert InvalidQuorumValue();
+        if (_upgradeQuorum < MINIMUM_QUORUM || _upgradeQuorum > 10000) revert InvalidQuorumValue();
+        if (_constitutionalQuorum < MINIMUM_QUORUM || _constitutionalQuorum > 10000) revert InvalidQuorumValue();
+        
+        // Validate hierarchy
+        if (_standardQuorum >= _emergencyQuorum || 
+            _emergencyQuorum >= _upgradeQuorum || 
+            _upgradeQuorum >= _constitutionalQuorum) {
+            revert QuorumHierarchyViolated();
+        }
+        
+        uint256 oldStandard = standardQuorum;
+        uint256 oldEmergency = emergencyQuorum;
+        uint256 oldUpgrade = upgradeQuorum;
+        uint256 oldConstitutional = constitutionalQuorum;
+        
+        standardQuorum = _standardQuorum;
+        emergencyQuorum = _emergencyQuorum;
+        upgradeQuorum = _upgradeQuorum;
+        constitutionalQuorum = _constitutionalQuorum;
+        
+        emit StandardQuorumUpdated(oldStandard, _standardQuorum);
+        emit EmergencyQuorumUpdated(oldEmergency, _emergencyQuorum);
+        emit UpgradeQuorumUpdated(oldUpgrade, _upgradeQuorum);
+        emit ConstitutionalQuorumUpdated(oldConstitutional, _constitutionalQuorum);
     }
 
     // ============ Security Council Functions ============
@@ -338,13 +474,13 @@ contract HyraGovernor is
         
         uint256 quorumPercentage;
         if (pType == ProposalType.EMERGENCY) {
-            quorumPercentage = EMERGENCY_QUORUM;
+            quorumPercentage = emergencyQuorum;
         } else if (pType == ProposalType.CONSTITUTIONAL) {
-            quorumPercentage = CONSTITUTIONAL_QUORUM;
+            quorumPercentage = constitutionalQuorum;
         } else if (pType == ProposalType.UPGRADE) {
-            quorumPercentage = UPGRADE_QUORUM;
+            quorumPercentage = upgradeQuorum;
         } else {
-            quorumPercentage = STANDARD_QUORUM;
+            quorumPercentage = standardQuorum;
         }
         
         uint256 calculatedQuorum = (supply * quorumPercentage) / 10000;
@@ -373,17 +509,17 @@ contract HyraGovernor is
      */
     function getQuorumPercentage(ProposalType proposalType) 
         external 
-        pure 
+        view 
         returns (uint256) 
     {
         if (proposalType == ProposalType.EMERGENCY) {
-            return EMERGENCY_QUORUM;
+            return emergencyQuorum;
         } else if (proposalType == ProposalType.CONSTITUTIONAL) {
-            return CONSTITUTIONAL_QUORUM;
+            return constitutionalQuorum;
         } else if (proposalType == ProposalType.UPGRADE) {
-            return UPGRADE_QUORUM;
+            return upgradeQuorum;
         } else {
-            return STANDARD_QUORUM;
+            return standardQuorum;
         }
     }
 
@@ -391,11 +527,11 @@ contract HyraGovernor is
      * @notice Validate quorum hierarchy (for testing/debugging)
      * @return True if quorum hierarchy is correct
      */
-    function validateQuorumHierarchy() external pure returns (bool) {
-        return STANDARD_QUORUM < EMERGENCY_QUORUM && 
-               EMERGENCY_QUORUM < UPGRADE_QUORUM && 
-               UPGRADE_QUORUM < CONSTITUTIONAL_QUORUM &&
-               MINIMUM_QUORUM < STANDARD_QUORUM;
+    function validateQuorumHierarchy() external view returns (bool) {
+        return standardQuorum < emergencyQuorum && 
+               emergencyQuorum < upgradeQuorum && 
+               upgradeQuorum < constitutionalQuorum &&
+               MINIMUM_QUORUM < standardQuorum;
     }
 
     // ============ Overrides Required for OpenZeppelin v5 ============

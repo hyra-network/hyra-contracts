@@ -58,6 +58,7 @@ async function deployCore() {
         exports.INITIAL_SUPPLY,
         voter1.address,
         timelockProxyAddr, // owner/governance is Timelock (proxy)
+        0, // _yearStartTime: 0 means use default (YEAR_2025_START)
     ]);
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "HyraToken");
     await (await proxyDeployer.deployProxy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "HyraToken")).wait();
