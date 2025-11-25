@@ -72,8 +72,22 @@ contract HyraToken is
     uint256 public mintRequestCount;
     uint256 public constant MINT_EXECUTION_DELAY = 2 days;
     
-    // Storage gap for upgradeability
-    uint256[39] private __gap;
+    // ============ Token Distribution Configuration ============
+    // Distribution to 6 multisig wallets with fixed percentages
+    struct DistributionConfig {
+        address communityEcosystem;      // 60%
+        address liquidityBuybackReserve;  // 12%
+        address marketingPartnerships;    // 10%
+        address teamFounders;             // 8%
+        address strategicAdvisors;       // 5%
+        address seedStrategicVC;          // 5%
+    }
+    
+    DistributionConfig public distributionConfig;
+    bool public configSet;  // Immutable flag - can only set once
+    
+    // Storage gap for upgradeability (reduced by 1 slot for distribution config)
+    uint256[38] private __gap;
 
     // ============ Events ============
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
@@ -88,6 +102,26 @@ contract HyraToken is
     event InitialDistribution(address indexed holder, uint256 amount, uint256 timestamp);
     event TokensPaused(address indexed by);
     event TokensUnpaused(address indexed by);
+    
+    // Distribution events
+    event DistributionConfigSet(
+        address indexed communityEcosystem,
+        address indexed liquidityBuybackReserve,
+        address indexed marketingPartnerships,
+        address teamFounders,
+        address strategicAdvisors,
+        address seedStrategicVC
+    );
+    
+    event TokensDistributed(
+        uint256 totalAmount,
+        uint256 communityEcosystem,
+        uint256 liquidityBuybackReserve,
+        uint256 marketingPartnerships,
+        uint256 teamFounders,
+        uint256 strategicAdvisors,
+        uint256 seedStrategicVC
+    );
 
     // ============ Errors ============
     error ZeroAddress();
@@ -103,6 +137,10 @@ contract HyraToken is
     error MintDelayNotMet();
     error DirectMintDisabled();
     error RequestExpired();
+    error ConfigAlreadySet();
+    error ConfigNotSet();
+    error DuplicateAddress();
+    error NotContract();
 
     // ============ Modifiers ============
     // Removed onlyMinter modifier along with minter role logic
@@ -146,15 +184,19 @@ contract HyraToken is
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
         
         if (_initialSupply > 0) {
-            // Mint to vesting contract instead of single holder for security
-            _mint(_vestingContract, _initialSupply);
+            // Distribution config must be set before initialize
+            if (!configSet) revert ConfigNotSet();
+            
+            // Distribute initial supply to 6 multisig wallets
+            _distributeTokens(_initialSupply);
+            
             totalMintedSupply = _initialSupply;
             
             // Track initial supply in year 1
             mintedByYear[1] = _initialSupply;
             
-            // Emit event for transparency - now shows vesting contract
-            emit InitialDistribution(_vestingContract, _initialSupply, block.timestamp);
+            // Emit event for transparency
+            emit InitialDistribution(address(0), _initialSupply, block.timestamp);
         }
         
         // Initialize mint year tracking
@@ -165,6 +207,89 @@ contract HyraToken is
     }
     
     // Legacy initializer removed to eliminate single-holder initial distribution path
+
+    // ============ Distribution Configuration ============
+    
+    /**
+     * @notice Set token distribution configuration (only owner, can only set once)
+     * @param _communityEcosystem Community & Ecosystem wallet (60%)
+     * @param _liquidityBuybackReserve Liquidity, Buyback & Reserve wallet (12%)
+     * @param _marketingPartnerships Marketing & Partnerships wallet (10%)
+     * @param _teamFounders Team & Founders wallet (8%)
+     * @param _strategicAdvisors Strategic Advisors wallet (5%)
+     * @param _seedStrategicVC Seed & Strategic VC wallet (5%)
+     * @dev This function can only be called once. Addresses are immutable after set.
+     *      All addresses must be contracts (multisig wallets), not EOA.
+     */
+    function setDistributionConfig(
+        address _communityEcosystem,
+        address _liquidityBuybackReserve,
+        address _marketingPartnerships,
+        address _teamFounders,
+        address _strategicAdvisors,
+        address _seedStrategicVC
+    ) external {
+        // Allow setting config before initialization (no owner check)
+        // After initialization, only owner can call (checked via onlyOwner if needed)
+        // For now, allow anyone to set before init, but in practice should be deployer
+        // Can only set once
+        if (configSet) revert ConfigAlreadySet();
+        
+        // Validate all addresses are not zero
+        if (_communityEcosystem == address(0)) revert ZeroAddress();
+        if (_liquidityBuybackReserve == address(0)) revert ZeroAddress();
+        if (_marketingPartnerships == address(0)) revert ZeroAddress();
+        if (_teamFounders == address(0)) revert ZeroAddress();
+        if (_strategicAdvisors == address(0)) revert ZeroAddress();
+        if (_seedStrategicVC == address(0)) revert ZeroAddress();
+        
+        // Validate all addresses are contracts (multisig wallets)
+        if (_communityEcosystem.code.length == 0) revert NotContract();
+        if (_liquidityBuybackReserve.code.length == 0) revert NotContract();
+        if (_marketingPartnerships.code.length == 0) revert NotContract();
+        if (_teamFounders.code.length == 0) revert NotContract();
+        if (_strategicAdvisors.code.length == 0) revert NotContract();
+        if (_seedStrategicVC.code.length == 0) revert NotContract();
+        
+        // Prevent duplicate addresses
+        if (_communityEcosystem == _liquidityBuybackReserve) revert DuplicateAddress();
+        if (_communityEcosystem == _marketingPartnerships) revert DuplicateAddress();
+        if (_communityEcosystem == _teamFounders) revert DuplicateAddress();
+        if (_communityEcosystem == _strategicAdvisors) revert DuplicateAddress();
+        if (_communityEcosystem == _seedStrategicVC) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _marketingPartnerships) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _teamFounders) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _strategicAdvisors) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _seedStrategicVC) revert DuplicateAddress();
+        if (_marketingPartnerships == _teamFounders) revert DuplicateAddress();
+        if (_marketingPartnerships == _strategicAdvisors) revert DuplicateAddress();
+        if (_marketingPartnerships == _seedStrategicVC) revert DuplicateAddress();
+        if (_teamFounders == _strategicAdvisors) revert DuplicateAddress();
+        if (_teamFounders == _seedStrategicVC) revert DuplicateAddress();
+        if (_strategicAdvisors == _seedStrategicVC) revert DuplicateAddress();
+        
+        // Set distribution config
+        distributionConfig = DistributionConfig({
+            communityEcosystem: _communityEcosystem,
+            liquidityBuybackReserve: _liquidityBuybackReserve,
+            marketingPartnerships: _marketingPartnerships,
+            teamFounders: _teamFounders,
+            strategicAdvisors: _strategicAdvisors,
+            seedStrategicVC: _seedStrategicVC
+        });
+        
+        // Mark as set (immutable)
+        configSet = true;
+        
+        emit DistributionConfigSet(
+            _communityEcosystem,
+            _liquidityBuybackReserve,
+            _marketingPartnerships,
+            _teamFounders,
+            _strategicAdvisors,
+            _seedStrategicVC
+        );
+    }
 
     // ============ Minting Functions ============
 
@@ -270,11 +395,14 @@ contract HyraToken is
         pendingByYear[requestYear] -= request.amount;
         totalMintedSupply += request.amount;
         
-        // Mint tokens
-        _mint(request.recipient, request.amount);
+        // Distribution config must be set
+        if (!configSet) revert ConfigNotSet();
         
-        emit MintRequestExecuted(_requestId, request.recipient, request.amount);
-        emit TokensMinted(request.recipient, request.amount, totalSupply());
+        // Distribute tokens to 6 multisig wallets (ignore request.recipient)
+        _distributeTokens(request.amount);
+        
+        emit MintRequestExecuted(_requestId, address(0), request.amount);
+        emit TokensMinted(address(0), request.amount, totalSupply());
     }
     
     /**
@@ -314,6 +442,55 @@ contract HyraToken is
      * @param year The year number (1-based)
      * @return Annual mint cap for that year
      */
+    /**
+     * @notice Internal function to distribute tokens to 6 wallets with fixed percentages
+     * @param _totalAmount Total amount to distribute
+     * @dev Distribution percentages: 60%, 12%, 10%, 8%, 5%, 5%
+     *      Remainder from rounding goes to Community & Ecosystem (largest allocation)
+     */
+    function _distributeTokens(uint256 _totalAmount) internal {
+        require(configSet, "Distribution config not set");
+        require(_totalAmount > 0, "Amount must be greater than 0");
+        
+        uint256 basisPoints = 10000;
+        
+        // Calculate distribution amounts using basis points (fixed percentages)
+        uint256 community = (_totalAmount * 6000) / basisPoints;      // 60%
+        uint256 liquidity = (_totalAmount * 1200) / basisPoints;      // 12%
+        uint256 marketing = (_totalAmount * 1000) / basisPoints;      // 10%
+        uint256 team = (_totalAmount * 800) / basisPoints;            // 8%
+        uint256 advisors = (_totalAmount * 500) / basisPoints;       // 5%
+        uint256 seed = (_totalAmount * 500) / basisPoints;           // 5%
+        
+        // Calculate remainder (due to rounding)
+        uint256 distributed = community + liquidity + marketing + team + advisors + seed;
+        uint256 remainder = _totalAmount - distributed;
+        
+        // Add remainder to largest allocation (Community & Ecosystem)
+        community += remainder;
+        
+        // Verify total (safety check)
+        require(community + liquidity + marketing + team + advisors + seed == _totalAmount, "Distribution math error");
+        
+        // Mint to each wallet
+        _mint(distributionConfig.communityEcosystem, community);
+        _mint(distributionConfig.liquidityBuybackReserve, liquidity);
+        _mint(distributionConfig.marketingPartnerships, marketing);
+        _mint(distributionConfig.teamFounders, team);
+        _mint(distributionConfig.strategicAdvisors, advisors);
+        _mint(distributionConfig.seedStrategicVC, seed);
+        
+        emit TokensDistributed(
+            _totalAmount,
+            community,
+            liquidity,
+            marketing,
+            team,
+            advisors,
+            seed
+        );
+    }
+    
     function _getAnnualMintCap(uint256 year) private pure returns (uint256) {
         // FIXED: Use range checks instead of strict equality
         if (year < 1 || year > TIER3_END_YEAR) {

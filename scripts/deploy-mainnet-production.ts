@@ -1,6 +1,12 @@
 import { ethers } from "hardhat";
+import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  loadDistributionAddresses,
+  logDistributionAddresses,
+  verifyDistributionBalances,
+} from "./utils/distributionConfig";
 
 /**
  * Deploy HyraToken to Ethereum Mainnet for PRODUCTION
@@ -9,6 +15,9 @@ import * as path from "path";
  * MINT_EXECUTION_DELAY = 2 days (production setting)
  */
 async function main() {
+  const envFile = process.env.ENV_FILE || ".env.prod";
+  dotenv.config({ path: path.resolve(__dirname, "..", envFile) });
+
   const [deployer] = await ethers.getSigners();
   console.log("Deployer:", await deployer.getAddress());
   console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(await deployer.getAddress())), "ETH");
@@ -115,7 +124,7 @@ async function main() {
   // Initial supply: 2.5B tokens (5% of 50B max supply)
   const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5 billion
   console.log(`   Initial Supply: 2.5B tokens (5% of total supply)`);
-  console.log(`   Initial tokens will be minted to: Safe Multisig`);
+  console.log(`   Initial tokens will be auto-distributed to 6 multisig wallets`);
   console.log(`   WARNING: Year 1 quota will be FULL - cannot mint more until Year 2`);
 
   // Year 1 starts: January 1, 2025 00:00:00 UTC
@@ -124,20 +133,40 @@ async function main() {
   console.log(`   Year 1 Start: ${yearStartDate.toISOString()} (${YEAR_START_TIME})`);
   console.log(`   Year 2 Start: ${new Date((YEAR_START_TIME + 365 * 24 * 60 * 60) * 1000).toISOString()}`);
 
-  const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
-    "HYRA",
-    "HYRA",
-    INITIAL_SUPPLY,     // 2.5B initial supply
-    safeAddress,        // MINT TO SAFE MULTISIG
-    await deployer.getAddress(),  // Temporary owner (deployer)
-    YEAR_START_TIME     // Year 1 starts Jan 1, 2025
-  ]);
-  
-  const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
+  const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x", { gasLimit: 8_000_000 });
   await tokenProxy.waitForDeployment();
   console.log(`   Proxy: ${await tokenProxy.getAddress()}`);
   console.log(`   Token deployed with PRODUCTION settings!`);
-  console.log(`   Initial supply minted: 2.5B HYRA to Safe Multisig`);
+  console.log(`   Initial supply will be distributed after config`);
+
+  const token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+  console.log(`\n=== Configuring Token Distribution (env: ${envFile}) ===`);
+  const distributionAddresses = await loadDistributionAddresses();
+  logDistributionAddresses(distributionAddresses);
+  await (
+    await token.setDistributionConfig(
+      distributionAddresses.communityEcosystem,
+      distributionAddresses.liquidityBuybackReserve,
+      distributionAddresses.marketingPartnerships,
+      distributionAddresses.teamFounders,
+      distributionAddresses.strategicAdvisors,
+      distributionAddresses.seedStrategicVC
+    )
+  ).wait();
+  console.log("   Distribution config set (immutable)");
+
+  await (
+    await token.initialize(
+      "HYRA",
+      "HYRA",
+      INITIAL_SUPPLY,
+      await vestingProxy.getAddress(),
+      await deployer.getAddress(), // temporary owner
+      YEAR_START_TIME
+    )
+  ).wait();
+  console.log("   Initial supply distributed to 6 multisig wallets");
+  await verifyDistributionBalances(token, distributionAddresses, INITIAL_SUPPLY);
   console.log(`   Year 1 starts: ${yearStartDate.toISOString()}`);
   console.log(`   Temporary owner: Deployer (will transfer to DAO later)`);
 
@@ -169,7 +198,6 @@ async function main() {
 
   // 7. Transfer HyraToken ownership to DAO (Timelock)
   console.log("\n6. Transferring HyraToken ownership to DAO...");
-  const token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
   await (await token.transferOwnership(await timelockProxy.getAddress(), { gasLimit: 8_000_000 })).wait();
   console.log(`   HyraToken ownership transferred to Timelock (DAO)`);
   console.log(`   New owner: ${await timelockProxy.getAddress()}`);
@@ -190,6 +218,7 @@ async function main() {
     yearStartTime: YEAR_START_TIME,
     yearStartDate: yearStartDate.toISOString(),
     year2StartDate: new Date((YEAR_START_TIME + 365 * 24 * 60 * 60) * 1000).toISOString(),
+    distribution: distributionAddresses,
     delays: {
       MINT_EXECUTION_DELAY: "2 days",
       TIMELOCK_MIN_DELAY: "2 days",

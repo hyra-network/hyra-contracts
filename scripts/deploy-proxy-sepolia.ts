@@ -1,7 +1,18 @@
 // scripts/deploy-proxy-sepolia.ts
 import { ethers } from "hardhat";
+import * as dotenv from "dotenv";
+import * as fs from "fs";
+import * as path from "path";
+import {
+	loadDistributionAddresses,
+	logDistributionAddresses,
+	verifyDistributionBalances,
+} from "./utils/distributionConfig";
 
 async function main() {
+	const envFile = process.env.ENV_FILE || ".env";
+	dotenv.config({ path: path.resolve(__dirname, "..", envFile) });
+
 	const [deployer] = await ethers.getSigners();
 	console.log(`Deployer: ${await deployer.getAddress()}`);
 	console.log(`Balance: ${ethers.formatEther(await ethers.provider.getBalance(await deployer.getAddress()))} ETH`);
@@ -29,34 +40,53 @@ async function main() {
 	console.log(`HyraTimelock proxy: ${await timelockProxy.getAddress()}`);
 
 	// TokenVesting proxy (initialize after token is deployed)
-	const vestingProxy = await ERC1967Proxy.deploy(
-		await vestingImpl.getAddress(),
-		"0x",
-		{ gasLimit: 8_000_000 }
-	);
+	const vestingProxy = await ERC1967Proxy.deploy(await vestingImpl.getAddress(), "0x", { gasLimit: 8_000_000 });
 	await vestingProxy.waitForDeployment();
 	console.log(`TokenVesting proxy: ${await vestingProxy.getAddress()}`);
 
-	// HyraToken impl + proxy with initialize (mint to vesting; owner=Safe or Timelock)
+	// HyraToken impl + proxy (initialize later to allow distribution config)
 	const safeAddress = process.env.SAFE_ADDRESS || "";
-	const governanceOwner = safeAddress || await timelockProxy.getAddress();
+	const governanceOwner = safeAddress || (await timelockProxy.getAddress());
 	console.log(`Token governance owner will be: ${governanceOwner}`);
-	
+
 	const HyraToken = await ethers.getContractFactory("HyraToken");
 	const tokenImpl = await HyraToken.deploy({ gasLimit: 8_000_000 });
 	await tokenImpl.waitForDeployment();
-	const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
-		"HYRA",
-		"HYRA",
-		ethers.parseEther("1000000"),
-		await vestingProxy.getAddress(),
-		governanceOwner,
-	]);
-	const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
+	const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x", { gasLimit: 8_000_000 });
 	await tokenProxy.waitForDeployment();
 	console.log(`HyraToken proxy: ${await tokenProxy.getAddress()}`);
 
-	// Initialize TokenVesting now that tokenProxy exists (owner=timelock)
+	const token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+	console.log(`\n=== Configuring Token Distribution (env: ${envFile}) ===`);
+	const distributionAddresses = await loadDistributionAddresses();
+	logDistributionAddresses(distributionAddresses);
+	await (
+		await token.setDistributionConfig(
+			distributionAddresses.communityEcosystem,
+			distributionAddresses.liquidityBuybackReserve,
+			distributionAddresses.marketingPartnerships,
+			distributionAddresses.teamFounders,
+			distributionAddresses.strategicAdvisors,
+			distributionAddresses.seedStrategicVC
+		)
+	).wait();
+	console.log("Distribution config set (immutable)");
+
+	const INITIAL_SUPPLY = ethers.parseEther("1000000");
+	await (
+		await token.initialize(
+			"HYRA",
+			"HYRA",
+			INITIAL_SUPPLY,
+			await vestingProxy.getAddress(),
+			governanceOwner,
+			0
+		)
+	).wait();
+	console.log("HyraToken initialized and initial supply distributed to 6 multisig wallets");
+	await verifyDistributionBalances(token, distributionAddresses, INITIAL_SUPPLY);
+
+	// Initialize TokenVesting now that tokenProxy exists (owner=Timelock)
 	const vesting = await ethers.getContractAt("TokenVesting", await vestingProxy.getAddress());
 	await (await vesting.initialize(await tokenProxy.getAddress(), await timelockProxy.getAddress())).wait();
 	console.log(`TokenVesting initialized (owner=Timelock)`);
@@ -78,8 +108,6 @@ async function main() {
 	console.log(`HyraGovernor proxy: ${await governorProxy.getAddress()}`);
 
 	// Save deployment
-	const fs = require("fs");
-	const path = require("path");
 	const dir = path.join(__dirname, "..", "deployments");
 	fs.mkdirSync(dir, { recursive: true });
 	const file = path.join(dir, `proxy-sepolia-${Date.now()}.json`);
@@ -96,6 +124,7 @@ async function main() {
 				timelockProxy: await timelockProxy.getAddress(),
 				governorImpl: await governorImpl.getAddress(),
 				governorProxy: await governorProxy.getAddress(),
+				distribution: distributionAddresses,
 			},
 			null,
 			2
