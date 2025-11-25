@@ -46,10 +46,10 @@ contract HyraGovernor is
     
     // Quorum percentages (basis points)
     // Hierarchy: STANDARD < EMERGENCY < UPGRADE < CONSTITUTIONAL
-    uint256 public constant STANDARD_QUORUM = 1000; // 10% - Regular proposals
-    uint256 public constant EMERGENCY_QUORUM = 2000; // 20% - Emergency proposals (increased for security)
-    uint256 public constant UPGRADE_QUORUM = 2500; // 25% - Contract upgrades
-    uint256 public constant CONSTITUTIONAL_QUORUM = 3000; // 30% - Constitutional changes
+    uint256 public constant STANDARD_QUORUM = 500; // 5% - Regular proposals
+    uint256 public constant EMERGENCY_QUORUM = 1000; // 10% - Emergency proposals (higher for security)
+    uint256 public constant UPGRADE_QUORUM = 1500; // 15% - Contract upgrades
+    uint256 public constant CONSTITUTIONAL_QUORUM = 2500; // 25% - Constitutional changes
     
     // Minimum quorum to prevent governance attacks
     uint256 public constant MINIMUM_QUORUM = 100; // 1% minimum

@@ -1,4 +1,5 @@
 /**
+ *  npx hardhat test test/HyraToken.MintSchedule.DAO.Complete.test.ts
  * ============================================================================
  * BỘ TEST CASE ĐẦY ĐỦ CHO HYRA DAO MINT SCHEDULE
  * ============================================================================
@@ -12,10 +13,10 @@
  * 6. Execute Mint → HyraToken.executeMintRequest()
  * 
  * QUORUM LEVELS:
- * - STANDARD: 10% (1000 basis points)
- * - EMERGENCY: 20% (2000 basis points)
- * - UPGRADE: 25% (2500 basis points)
- * - CONSTITUTIONAL: 30% (3000 basis points)
+ * - STANDARD: 5% (500 basis points)
+ * - EMERGENCY: 10% (1000 basis points)
+ * - UPGRADE: 15% (1500 basis points)
+ * - CONSTITUTIONAL: 25% (2500 basis points)
  * 
  * ============================================================================
  */
@@ -23,10 +24,10 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { time, mine } from "@nomicfoundation/hardhat-network-helpers";
-import { HyraToken, HyraGovernor, HyraTimelock } from "../typechain-types";
+import { HyraToken, HyraGovernor, HyraTimelock, MockDistributionWallet } from "../typechain-types";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
-describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function () {
+describe("HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function () {
   // ============ Constants ============
   const MAX_SUPPLY = ethers.parseEther("50000000000"); // 50 tỷ
   const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5 tỷ
@@ -44,6 +45,7 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
   const PROPOSAL_THRESHOLD = ethers.parseEther("1000000"); // 1M tokens
   const QUORUM_PERCENTAGE = 10; // 10%
   const TIMELOCK_DELAY = 2 * 24 * 60 * 60; // 2 days
+  const YEAR_START_TIMESTAMP = 0; // 0 = use block.timestamp (default in contract)
 
   // ============ Test Variables ============
   let token: HyraToken;
@@ -57,14 +59,20 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
   let voter3: SignerWithAddress;
   let recipient: SignerWithAddress;
   let vesting: SignerWithAddress;
+  let distributionWallets: MockDistributionWallet[];
 
   // ============ Helper Functions ============
   
-  /**
-   * Deploy toàn bộ hệ thống DAO
-   */
+  async function deployDistributionWallet(owner: SignerWithAddress): Promise<MockDistributionWallet> {
+    const Factory = await ethers.getContractFactory("MockDistributionWallet");
+    const wallet = await Factory.deploy(await owner.getAddress());
+    await wallet.waitForDeployment();
+    return wallet;
+  }
+
   async function deployDAOSystem() {
     [deployer, dao, voter1, voter2, voter3, recipient, vesting] = await ethers.getSigners();
+    distributionWallets = [];
 
     // 1. Deploy Token
     const HyraToken = await ethers.getContractFactory("HyraToken");
@@ -72,17 +80,42 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
     await tokenImpl.waitForDeployment();
 
     const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-    const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
+    const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x");
+    await tokenProxy.waitForDeployment();
+    const tokenContract = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+
+    for (let i = 0; i < 6; i++) {
+      distributionWallets.push(await deployDistributionWallet(vesting));
+    }
+
+    await tokenContract.setDistributionConfig(
+      await distributionWallets[0].getAddress(),
+      await distributionWallets[1].getAddress(),
+      await distributionWallets[2].getAddress(),
+      await distributionWallets[3].getAddress(),
+      await distributionWallets[4].getAddress(),
+      await distributionWallets[5].getAddress()
+    );
+
+    await tokenContract.initialize(
       "HYRA Token",
       "HYRA",
       INITIAL_SUPPLY,
       await vesting.getAddress(),
-      await deployer.getAddress() // Temporary owner
-    ]);
-    
-    const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInitData);
-    await tokenProxy.waitForDeployment();
-    const tokenContract = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+      await deployer.getAddress(),
+      YEAR_START_TIMESTAMP
+    );
+
+    const vestingAddress = await vesting.getAddress();
+    for (const wallet of distributionWallets) {
+      const walletAddress = await wallet.getAddress();
+      const balance = await tokenContract.balanceOf(walletAddress);
+      if (balance > 0n) {
+        await wallet
+          .connect(vesting)
+          .forwardTokens(await tokenContract.getAddress(), vestingAddress, balance);
+      }
+    }
 
     // 2. Deploy Timelock
     const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
@@ -248,26 +281,26 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
   });
 
   // ============================================================================
-  // 📋 TEST SUITE 1: KIỂM TRA SETUP DAO
+  // TEST SUITE 1: KIỂM TRA SETUP DAO
   // ============================================================================
-  describe("📋 Suite 1: Kiểm tra setup DAO system", function () {
+  describe("Suite 1: Kiểm tra setup DAO system", function () {
     
-    it("✅ 1.1: Token đã deploy và pre-mint 2.5B", async function () {
+    it("1.1: Token đã deploy và pre-mint 2.5B", async function () {
       const totalSupply = await token.totalSupply();
       expect(totalSupply).to.equal(INITIAL_SUPPLY);
     });
 
-    it("✅ 1.2: Governor đã được setup đúng", async function () {
+    it("1.2: Governor đã được setup đúng", async function () {
       const tokenAddr = await governor.token();
       expect(tokenAddr).to.equal(await token.getAddress());
     });
 
-    it("✅ 1.3: Timelock là owner của token", async function () {
+    it("1.3: Timelock là owner của token", async function () {
       const owner = await token.owner();
       expect(owner).to.equal(await timelock.getAddress());
     });
 
-    it("✅ 1.4: Voters có voting power", async function () {
+    it("1.4: Voters có voting power", async function () {
       const power1 = await token.getVotes(await voter1.getAddress());
       const power2 = await token.getVotes(await voter2.getAddress());
       const power3 = await token.getVotes(await voter3.getAddress());
@@ -277,25 +310,25 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       expect(power3).to.equal(ethers.parseEther("800000000"));
     });
 
-    it("✅ 1.5: Quorum levels đúng", async function () {
+    it("1.5: Quorum levels đúng", async function () {
       const standardQuorum = await governor.STANDARD_QUORUM();
       const emergencyQuorum = await governor.EMERGENCY_QUORUM();
       const upgradeQuorum = await governor.UPGRADE_QUORUM();
       const constitutionalQuorum = await governor.CONSTITUTIONAL_QUORUM();
       
-      expect(standardQuorum).to.equal(1000n); // 10%
-      expect(emergencyQuorum).to.equal(2000n); // 20%
-      expect(upgradeQuorum).to.equal(2500n); // 25%
-      expect(constitutionalQuorum).to.equal(3000n); // 30%
+      expect(standardQuorum).to.equal(500n);  // 5%
+      expect(emergencyQuorum).to.equal(1000n); // 10%
+      expect(upgradeQuorum).to.equal(1500n); // 15%
+      expect(constitutionalQuorum).to.equal(2500n); // 25%
     });
   });
 
   // ============================================================================
-  // 📋 TEST SUITE 2: LUỒNG GOVERNANCE CƠ BẢN
+  // TEST SUITE 2: LUỒNG GOVERNANCE CƠ BẢN
   // ============================================================================
-  describe("📋 Suite 2: Luồng governance cơ bản - Propose → Vote → Queue → Execute", function () {
+  describe("Suite 2: Luồng governance cơ bản - Propose → Vote → Queue → Execute", function () {
     
-    it("✅ 2.1: Tạo proposal mint thành công", async function () {
+    it("2.1: Tạo proposal mint thành công", async function () {
       this.timeout(60000);
       
       await fastForwardToYear(2);
@@ -318,7 +351,7 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       await expect(tx).to.emit(governor, "ProposalCreated");
     });
 
-    it("✅ 2.2: Vote đạt quorum và proposal succeeded", async function () {
+    it("2.2: Vote đạt quorum và proposal succeeded", async function () {
       this.timeout(60000);
       
       await fastForwardToYear(2);
@@ -366,7 +399,7 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       expect(state).to.equal(4n); // Succeeded
     });
 
-    it("✅ 2.3: Queue proposal vào timelock", async function () {
+    it("2.3: Queue proposal vào timelock", async function () {
       this.timeout(60000);
       
       await fastForwardToYear(2);
@@ -422,7 +455,7 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       expect(state).to.equal(5n); // Queued
     });
 
-    it("✅ 2.4: Execute proposal sau timelock delay", async function () {
+    it("2.4: Execute proposal sau timelock delay", async function () {
       this.timeout(60000);
       
       await fastForwardToYear(2);
@@ -491,15 +524,15 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
   });
 
   // ============================================================================
-  // 📋 TEST SUITE 3: FULL MINT FLOW QUA DAO
+  // TEST SUITE 3: FULL MINT FLOW QUA DAO
   // ============================================================================
-  describe("📋 Suite 3: Full mint flow - Từ proposal đến nhận token", function () {
+  describe("Suite 3: Full mint flow - Từ proposal đến nhận token", function () {
     
-    it("✅ 3.1: FULL FLOW - Mint 1B HYRA qua DAO governance", async function () {
+    it("3.1: FULL FLOW - Mint 1B HYRA qua DAO governance", async function () {
       this.timeout(120000);
       
       console.log("\n========================================");
-      console.log("🏛️ BẮT ĐẦU FULL DAO MINT FLOW");
+      console.log("BẮT ĐẦU FULL DAO MINT FLOW");
       console.log("========================================\n");
       
       await fastForwardToYear(2);
@@ -508,7 +541,7 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       const recipientAddr = await recipient.getAddress();
       
       // STEP 1: Create Proposal
-      console.log("📝 STEP 1: Tạo proposal...");
+      console.log("STEP 1: Tạo proposal...");
       const calldata = token.interface.encodeFunctionData("createMintRequest", [
         recipientAddr,
         amount,
@@ -534,40 +567,40 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       });
 
       const proposalId = event ? governor.interface.parseLog(event)?.args[0] : null;
-      console.log(`   ✅ Proposal created: ${proposalId}\n`);
+      console.log(`   Proposal created: ${proposalId}\n`);
 
       // STEP 2: Voting
-      console.log("🗳️  STEP 2: Voting...");
+      console.log("STEP 2: Voting...");
       await mine(VOTING_DELAY + 1);
       
       await governor.connect(voter1).castVote(proposalId, 1);
-      console.log("   ✅ Voter 1 voted FOR (800M voting power)");
+      console.log("   Voter 1 voted FOR (800M voting power)");
       
       await governor.connect(voter2).castVote(proposalId, 1);
-      console.log("   ✅ Voter 2 voted FOR (800M voting power)");
+      console.log("   Voter 2 voted FOR (800M voting power)");
       
       await governor.connect(voter3).castVote(proposalId, 1);
-      console.log("   ✅ Voter 3 voted FOR (800M voting power)");
-      console.log("   📊 Total votes: 2.4B (96% of initial supply)\n");
+      console.log("   Voter 3 voted FOR (800M voting power)");
+      console.log("   Total votes: 2.4B (96% of initial supply)\n");
 
       await mine(VOTING_PERIOD + 1);
 
       const state1 = await governor.state(proposalId);
-      console.log(`   📊 Proposal state: ${state1} (0=Pending, 1=Active, 2=Canceled, 3=Defeated, 4=Succeeded, 5=Queued, 6=Expired, 7=Executed)`);
+      console.log(`   Proposal state: ${state1} (0=Pending, 1=Active, 2=Canceled, 3=Defeated, 4=Succeeded, 5=Queued, 6=Expired, 7=Executed)`);
       
       // Check quorum
       const quorum = await governor.getProposalQuorum(proposalId);
       const votes = await governor.proposalVotes(proposalId);
-      console.log(`   📊 Required quorum: ${ethers.formatEther(quorum)} HYRA`);
-      console.log(`   📊 For votes: ${ethers.formatEther(votes[1])} HYRA`);
-      console.log(`   📊 Against votes: ${ethers.formatEther(votes[0])} HYRA`);
-      console.log(`   📊 Abstain votes: ${ethers.formatEther(votes[2])} HYRA`);
+      console.log(`   Required quorum: ${ethers.formatEther(quorum)} HYRA`);
+      console.log(`   For votes: ${ethers.formatEther(votes[1])} HYRA`);
+      console.log(`   Against votes: ${ethers.formatEther(votes[0])} HYRA`);
+      console.log(`   Abstain votes: ${ethers.formatEther(votes[2])} HYRA`);
       
       expect(state1).to.equal(4n); // Succeeded
-      console.log("   ✅ Proposal SUCCEEDED\n");
+      console.log("   Proposal SUCCEEDED\n");
 
       // STEP 3: Queue
-      console.log("⏳ STEP 3: Queue vào Timelock...");
+      console.log("STEP 3: Queue vào Timelock...");
       const descriptionHash = ethers.id(description);
       await governor.queue(
         [await token.getAddress()],
@@ -575,10 +608,10 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
         [calldata],
         descriptionHash
       );
-      console.log("   ✅ Proposal queued (2 days delay)\n");
+      console.log("   Proposal queued (2 days delay)\n");
 
       // STEP 4: Execute (after timelock)
-      console.log("⚡ STEP 4: Execute proposal...");
+      console.log("STEP 4: Execute proposal...");
       await time.increase(TIMELOCK_DELAY + 1);
       
       await governor.execute(
@@ -587,8 +620,8 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
         [calldata],
         descriptionHash
       );
-      console.log("   ✅ Proposal executed");
-      console.log("   ✅ Mint request created\n");
+      console.log("   Proposal executed");
+      console.log("   Mint request created\n");
 
       // Verify mint request
       const requestCount = await token.mintRequestCount();
@@ -600,32 +633,41 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       expect(request.executed).to.equal(false);
 
       // STEP 5: Execute mint (after 2 days delay)
-      console.log("💰 STEP 5: Execute mint request...");
+      console.log("STEP 5: Execute mint request...");
       await time.increase(MINT_EXECUTION_DELAY + 1);
       
       const balanceBefore = await token.balanceOf(recipientAddr);
       
       await token.executeMintRequest(0);
+      for (const wallet of distributionWallets) {
+        const walletAddress = await wallet.getAddress();
+        const walletBalance = await token.balanceOf(walletAddress);
+        if (walletBalance > 0n) {
+          await wallet
+            .connect(vesting)
+            .forwardTokens(await token.getAddress(), recipientAddr, walletBalance);
+        }
+      }
       
       const balanceAfter = await token.balanceOf(recipientAddr);
       const minted = balanceAfter - balanceBefore;
       
       expect(minted).to.equal(amount);
-      console.log(`   ✅ Minted: ${ethers.formatEther(minted)} HYRA`);
-      console.log(`   ✅ Recipient balance: ${ethers.formatEther(balanceAfter)} HYRA\n`);
+      console.log(`   Minted: ${ethers.formatEther(minted)} HYRA`);
+      console.log(`   Recipient balance: ${ethers.formatEther(balanceAfter)} HYRA\n`);
 
       console.log("========================================");
-      console.log("🎉 FULL DAO MINT FLOW HOÀN THÀNH");
+      console.log("FULL DAO MINT FLOW HOÀN THÀNH");
       console.log("========================================\n");
     });
   });
 
   // ============================================================================
-  // 📋 TEST SUITE 4: KIỂM TRA QUORUM LEVELS
+  // TEST SUITE 4: KIỂM TRA QUORUM LEVELS
   // ============================================================================
-  describe("📋 Suite 4: Kiểm tra quorum levels theo loại proposal", function () {
+  describe("Suite 4: Kiểm tra quorum levels theo loại proposal", function () {
     
-    it("✅ 4.1: STANDARD proposal - Quorum 10%", async function () {
+    it("4.1: STANDARD proposal - Quorum 5%", async function () {
       this.timeout(60000);
       
       await fastForwardToYear(2);
@@ -667,32 +709,32 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       // Check quorum (after mining blocks)
       const quorum = await governor.getProposalQuorum(proposalId);
       const totalSupply = await token.totalSupply();
-      const expectedQuorum = (totalSupply * 1000n) / 10000n; // 10%
+      const expectedQuorum = (totalSupply * 500n) / 10000n; // 5%
       
       expect(quorum).to.equal(expectedQuorum);
       
-      console.log(`   📊 Standard quorum: ${ethers.formatEther(quorum)} HYRA (10%)`);
+      console.log(`   Standard quorum: ${ethers.formatEther(quorum)} HYRA (5%)`);
     });
 
-    it("✅ 4.2: Verify quorum constants", async function () {
+    it("4.2: Verify quorum constants", async function () {
       // Just verify the quorum constants are set correctly
       const standardQuorum = await governor.STANDARD_QUORUM();
       const emergencyQuorum = await governor.EMERGENCY_QUORUM();
       const upgradeQuorum = await governor.UPGRADE_QUORUM();
       const constitutionalQuorum = await governor.CONSTITUTIONAL_QUORUM();
       
-      expect(standardQuorum).to.equal(1000n); // 10%
-      expect(emergencyQuorum).to.equal(2000n); // 20%
-      expect(upgradeQuorum).to.equal(2500n); // 25%
-      expect(constitutionalQuorum).to.equal(3000n); // 30%
+      expect(standardQuorum).to.equal(500n);  // 5%
+      expect(emergencyQuorum).to.equal(1000n); // 10%
+      expect(upgradeQuorum).to.equal(1500n); // 15%
+      expect(constitutionalQuorum).to.equal(2500n); // 25%
       
-      console.log(`   📊 Standard quorum: 10%`);
-      console.log(`   📊 Emergency quorum: 20%`);
-      console.log(`   📊 Upgrade quorum: 25%`);
-      console.log(`   📊 Constitutional quorum: 30%`);
+      console.log(`   Standard quorum: 5%`);
+      console.log(`   Emergency quorum: 10%`);
+      console.log(`   Upgrade quorum: 15%`);
+      console.log(`   Constitutional quorum: 25%`);
     });
 
-    it("❌ 4.3: Non-security council không thể tạo EMERGENCY proposal", async function () {
+    it("4.3: Non-security council không thể tạo EMERGENCY proposal", async function () {
       await fastForwardToYear(2);
       
       const amount = ethers.parseEther("500000000");
@@ -715,11 +757,11 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
   });
 
   // ============================================================================
-  // 📋 TEST SUITE 5: KIỂM TRA ANNUAL MINT CAPS QUA DAO
+  // TEST SUITE 5: KIỂM TRA ANNUAL MINT CAPS QUA DAO
   // ============================================================================
-  describe("📋 Suite 5: Kiểm tra annual mint caps qua DAO", function () {
+  describe("Suite 5: Kiểm tra annual mint caps qua DAO", function () {
     
-    it("✅ 5.1: Mint đúng limit năm 2 (2.5B) qua DAO", async function () {
+    it("5.1: Mint đúng limit năm 2 (2.5B) qua DAO", async function () {
       this.timeout(120000);
       
       await fastForwardToYear(2);
@@ -791,10 +833,10 @@ describe("🏛️ HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function
       // Should have minted the full amount
       expect(mintedCurrentYear).to.be.gte(TIER1_ANNUAL_CAP);
       
-      console.log(`   ✅ Minted year ${currentYear}: ${ethers.formatEther(mintedCurrentYear)} HYRA`);
+      console.log(`   Minted year ${currentYear}: ${ethers.formatEther(mintedCurrentYear)} HYRA`);
     });
 
-    it("❌ 5.2: Không thể mint vượt limit năm 2", async function () {
+    it("5.2: Không thể mint vượt limit năm 2", async function () {
       this.timeout(120000);
       
       await fastForwardToYear(2);
