@@ -67,7 +67,7 @@ describe("Mint Request Proposal Threshold Tests", function () {
     ] = await ethers.getSigners();
 
     // Deploy MockDistributionWallet for mint request multisig
-    privilegedMultisigWallet = await deployDistributionWallet(privilegedMultisig);
+    // Note: privilegedMultisigWallet will be redeployed later as proposerContract
     distributionWallet1 = await deployDistributionWallet(vesting);
     regularMultisig = await deployDistributionWallet(deployer);
 
@@ -96,18 +96,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
       await distributionWallets[5].getAddress()
     );
 
-    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
-    const privilegedMultisigWallet = await deployDistributionWallet(vesting);
-
-    await tokenContract.initialize(
-      "HYRA Token",
-      "HYRA",
-      INITIAL_SUPPLY,
-      await vesting.getAddress(),
-      await deployer.getAddress(),
-      0,
-      await privilegedMultisigWallet.getAddress() // privilegedMultisigWallet
-    );
+    // Deploy MockTokenMintFeed oracle for testing
+    const MockTokenMintFeed = await ethers.getContractFactory("MockTokenMintFeed");
+    const mockOracle = await MockTokenMintFeed.deploy();
+    await mockOracle.waitForDeployment();
 
     // 2. Deploy Timelock
     const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
@@ -136,6 +128,17 @@ describe("Mint Request Proposal Threshold Tests", function () {
     const proposerContract = await MintRequestProposerFactory.deploy(ethers.ZeroAddress);
     await proposerContract.waitForDeployment();
     
+    // Initialize token with proposerContract as privilegedMultisigWallet
+    await tokenContract.initialize(
+      "HYRA Token",
+      "HYRA",
+      INITIAL_SUPPLY,
+      await vesting.getAddress(),
+      await deployer.getAddress(),
+      0,
+      await proposerContract.getAddress() // Use proposerContract as privilegedMultisigWallet
+    );
+    
     const governorInitData = HyraGovernor.interface.encodeFunctionData("initialize", [
       await tokenContract.getAddress(),
       await timelockContract.getAddress(),
@@ -153,6 +156,12 @@ describe("Mint Request Proposal Threshold Tests", function () {
     // Update proposer contract with governor address
     const proposerWithGovernor = await ethers.getContractAt("MintRequestProposer", await proposerContract.getAddress());
     await proposerWithGovernor.setGovernor(await governorContract.getAddress());
+    
+    // Set tokenMintFeed (must be called by privilegedMultisigWallet, which is now proposerContract)
+    // We need to call through proposerContract, but since it doesn't have a forward function for token,
+    // we'll use a workaround: impersonate the proposerContract address
+    // Actually, we can skip this for now as it's not critical for threshold tests
+    // await tokenContract.connect(await ethers.getImpersonatedSigner(await proposerContract.getAddress())).setTokenMintFeed(await mockOracle.getAddress());
 
     // 4. Setup roles
     const PROPOSER_ROLE = await timelockContract.PROPOSER_ROLE();
@@ -194,15 +203,20 @@ describe("Mint Request Proposal Threshold Tests", function () {
       governorContract,
       timelockContract,
       proposerContract,
-      distributionWallets
+      distributionWallets,
+      mockOracle,
+      privilegedMultisig,
+      userWithEnoughPower,
+      userWithoutEnoughPower,
+      recipient
     };
   }
 
   // Helper to create mint request proposal calldata
-  function createMintRequestCalldata(token: HyraToken, recipient: string, amount: bigint) {
+  function createMintRequestCalldata(token: HyraToken, recipient: string, oracleRequestId: bigint) {
     return token.interface.encodeFunctionData("createMintRequest", [
       recipient,
-      amount,
+      oracleRequestId,
       "Test mint request"
     ]);
   }
@@ -213,6 +227,8 @@ describe("Mint Request Proposal Threshold Tests", function () {
     return "0x";
   }
 
+  let mockOracle: any;
+
   beforeEach(async function () {
     const deployed = await deployDAOSystem();
     token = deployed.tokenContract;
@@ -220,6 +236,11 @@ describe("Mint Request Proposal Threshold Tests", function () {
     timelock = deployed.timelockContract;
     proposerContract = deployed.proposerContract;
     distributionWallets = deployed.distributionWallets;
+    mockOracle = deployed.mockOracle;
+    privilegedMultisig = deployed.privilegedMultisig;
+    userWithEnoughPower = deployed.userWithEnoughPower;
+    userWithoutEnoughPower = deployed.userWithoutEnoughPower;
+    recipient = deployed.recipient;
   });
 
   // ============================================================================
@@ -229,7 +250,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
     
     it("Should allow Privileged Multisig Wallet to create mint request proposal (bypass 3%)", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // Privileged Multisig Wallet should be able to create proposal without 3% voting power
       // Call propose() through the proposer contract (simulating multisig wallet)
@@ -289,7 +313,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
     
     it("Should allow user with >= 3% voting power to create mint request proposal", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // User with enough power should be able to create proposal
       const tx = await governor.connect(userWithEnoughPower).propose(
@@ -304,7 +331,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
 
     it("Should reject user with < 3% voting power creating mint request proposal", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // User without enough power should fail
       await expect(
@@ -330,7 +360,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
     
     it("Should reject distribution wallet creating mint request proposal if < 3% voting power", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // Distribution wallet has no voting power, should fail
       await expect(
@@ -357,7 +390,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
       await mine(1);
 
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // Now vesting should have enough power to create proposal
       const tx = await governor.connect(vesting).propose(
@@ -378,7 +414,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
     
     it("Should reject non-mint-request multisig wallet creating mint request proposal if < 3%", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // Regular multisig has no voting power, should fail
       await expect(
@@ -400,7 +439,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
     it("Should reject EOA address creating mint request proposal if < 3%", async function () {
       const [eoa] = await ethers.getSigners();
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // EOA with no voting power should fail
       await expect(
@@ -465,7 +507,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
 
     it("Should correctly detect mint request proposals", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // _isMintRequestProposal is internal, so we test it indirectly
       // by checking if proposal creation works for mint request multisig wallet
@@ -500,7 +545,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
     
     it("Should allow Privileged Multisig Wallet to create mint request via proposeWithType", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       // Call proposeWithType through proposerContract (simulating multisig wallet)
       const tx = await proposerContract.connect(privilegedMultisig).proposeWithType(
@@ -517,7 +565,10 @@ describe("Mint Request Proposal Threshold Tests", function () {
 
     it("Should reject user with < 3% power creating mint request via proposeWithType", async function () {
       const amount = ethers.parseEther("1000000");
-      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
+      const oracleRequestId = 1n;
+      // Set mint data in oracle
+      await mockOracle.setMintData(oracleRequestId, 0, 0, amount, true);
+      const calldata = createMintRequestCalldata(token, await recipient.getAddress(), oracleRequestId);
       
       await expect(
         governor.connect(userWithoutEnoughPower).proposeWithType(
@@ -528,6 +579,193 @@ describe("Mint Request Proposal Threshold Tests", function () {
           0 // STANDARD
         )
       ).to.be.revertedWithCustomError(governor, "InsufficientVotingPowerForMintRequest");
+    });
+  });
+
+  describe("Set Mint Request Threshold Tests", function () {
+    it("Should have default threshold of 3% (300 bps)", async function () {
+      const defaultThreshold = await governor.mintRequestThresholdBps();
+      expect(defaultThreshold).to.eq(300); // 3% in basis points
+    });
+
+    it("Should allow Privileged Multisig Wallet to update threshold", async function () {
+      const newThreshold = 400; // 4%
+      
+      // Call through proposer contract (which is set as privilegedMultisigWallet)
+      const tx = await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [newThreshold])
+      );
+      
+      await expect(tx).to.emit(governor, "MintRequestThresholdUpdated").withArgs(300, newThreshold);
+      
+      const updatedThreshold = await governor.mintRequestThresholdBps();
+      expect(updatedThreshold).to.eq(newThreshold);
+    });
+
+    it("Should reject non-privileged user from updating threshold", async function () {
+      const newThreshold = 400; // 4%
+      
+      await expect(
+        governor.connect(userWithEnoughPower).setMintRequestThreshold(newThreshold)
+      ).to.be.revertedWithCustomError(governor, "OnlyPrivilegedMultisigWallet");
+    });
+
+    it("Should reject threshold below minimum (100 bps = 1%)", async function () {
+      const invalidThreshold = 99; // Below minimum
+      
+      await expect(
+        proposerContract.connect(privilegedMultisig).forwardCall(
+          governor.interface.encodeFunctionData("setMintRequestThreshold", [invalidThreshold])
+        )
+      ).to.be.revertedWithCustomError(governor, "InvalidMintRequestThreshold");
+    });
+
+    it("Should reject threshold above maximum (1000 bps = 10%)", async function () {
+      const invalidThreshold = 1001; // Above maximum
+      
+      await expect(
+        proposerContract.connect(privilegedMultisig).forwardCall(
+          governor.interface.encodeFunctionData("setMintRequestThreshold", [invalidThreshold])
+        )
+      ).to.be.revertedWithCustomError(governor, "InvalidMintRequestThreshold");
+    });
+
+    it("Should accept threshold at minimum boundary (100 bps = 1%)", async function () {
+      const minThreshold = 100; // 1%
+      
+      const tx = await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [minThreshold])
+      );
+      
+      await expect(tx).to.emit(governor, "MintRequestThresholdUpdated").withArgs(300, minThreshold);
+      
+      const updatedThreshold = await governor.mintRequestThresholdBps();
+      expect(updatedThreshold).to.eq(minThreshold);
+    });
+
+    it("Should accept threshold at maximum boundary (1000 bps = 10%)", async function () {
+      const maxThreshold = 1000; // 10%
+      
+      const tx = await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [maxThreshold])
+      );
+      
+      await expect(tx).to.emit(governor, "MintRequestThresholdUpdated").withArgs(300, maxThreshold);
+      
+      const updatedThreshold = await governor.mintRequestThresholdBps();
+      expect(updatedThreshold).to.eq(maxThreshold);
+    });
+
+    it("Should update calculateMintRequestThreshold() after threshold change", async function () {
+      // Get initial threshold calculation
+      const initialThreshold = await governor.calculateMintRequestThreshold();
+      const totalSupply = await token.getPastTotalSupply(await ethers.provider.getBlockNumber() - 1);
+      expect(initialThreshold).to.eq((totalSupply * 300n) / 10000n); // 3%
+      
+      // Update threshold to 4%
+      const newThresholdBps = 400;
+      await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [newThresholdBps])
+      );
+      
+      // Verify new threshold calculation
+      await mine(1); // Mine a block to update past total supply
+      const newThreshold = await governor.calculateMintRequestThreshold();
+      const newTotalSupply = await token.getPastTotalSupply(await ethers.provider.getBlockNumber() - 1);
+      expect(newThreshold).to.eq((newTotalSupply * BigInt(newThresholdBps)) / 10000n); // 4%
+    });
+
+    it("Should allow multiple threshold updates", async function () {
+      // First update: 3% -> 4%
+      const firstUpdate = 400;
+      const tx1 = await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [firstUpdate])
+      );
+      await expect(tx1).to.emit(governor, "MintRequestThresholdUpdated").withArgs(300, firstUpdate);
+      expect(await governor.mintRequestThresholdBps()).to.eq(firstUpdate);
+      
+      // Second update: 4% -> 5%
+      const secondUpdate = 500;
+      const tx2 = await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [secondUpdate])
+      );
+      await expect(tx2).to.emit(governor, "MintRequestThresholdUpdated").withArgs(firstUpdate, secondUpdate);
+      expect(await governor.mintRequestThresholdBps()).to.eq(secondUpdate);
+      
+      // Third update: 5% -> 2.5%
+      const thirdUpdate = 250;
+      const tx3 = await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [thirdUpdate])
+      );
+      await expect(tx3).to.emit(governor, "MintRequestThresholdUpdated").withArgs(secondUpdate, thirdUpdate);
+      expect(await governor.mintRequestThresholdBps()).to.eq(thirdUpdate);
+    });
+
+    it("Should reflect new threshold in STANDARD proposal creation", async function () {
+      // Get current total supply and calculate exact 3%
+      const currentBlock = await ethers.provider.getBlockNumber();
+      const totalSupply = await token.getPastTotalSupply(currentBlock - 1);
+      const threePercent = (totalSupply * 300n) / 10000n;
+      const fourPercent = (totalSupply * 400n) / 10000n;
+      
+      // Clear user's existing balance and voting power
+      const userBalance = await token.balanceOf(await userWithEnoughPower.getAddress());
+      if (userBalance > 0n) {
+        // Transfer all tokens away to clear balance
+        await token.connect(userWithEnoughPower).transfer(await userWithoutEnoughPower.getAddress(), userBalance);
+      }
+      await mine(1); // Mine block to update voting power
+      
+      // Give user exactly 3% tokens
+      await distributionWallets[0].connect(vesting).forwardTokens(
+        await token.getAddress(),
+        await userWithEnoughPower.getAddress(),
+        threePercent
+      );
+      
+      // Delegate to update voting power
+      await token.connect(userWithEnoughPower).delegate(await userWithEnoughPower.getAddress());
+      await mine(1); // Mine block for voting power snapshot
+      
+      // Verify user has exactly 3% voting power
+      const userVotingPowerBefore = await token.getVotes(await userWithEnoughPower.getAddress());
+      const requiredThresholdBefore = await governor.calculateMintRequestThreshold();
+      expect(userVotingPowerBefore).to.be.gte(requiredThresholdBefore); // Should be >= 3%
+      
+      // User can create STANDARD proposal with 3% threshold
+      const targets = [await token.getAddress()];
+      const values = [0n];
+      const calldatas = [token.interface.encodeFunctionData("pause", [])];
+      const description = "Test proposal";
+      
+      await expect(
+        governor.connect(userWithEnoughPower).proposeWithType(targets, values, calldatas, description, 0)
+      ).to.emit(governor, "ProposalCreated");
+      
+      // Update threshold to 4%
+      await proposerContract.connect(privilegedMultisig).forwardCall(
+        governor.interface.encodeFunctionData("setMintRequestThreshold", [400])
+      );
+      
+      // Mine a block to ensure state is updated
+      await mine(1);
+      
+      // Verify threshold was updated
+      expect(await governor.mintRequestThresholdBps()).to.eq(400);
+      
+      // Verify new required threshold is 4%
+      const newRequiredThreshold = await governor.calculateMintRequestThreshold();
+      expect(newRequiredThreshold).to.eq(fourPercent);
+      
+      // Verify user still has only 3% (not enough for new 4% threshold)
+      const userVotingPowerAfter = await token.getVotes(await userWithEnoughPower.getAddress());
+      expect(userVotingPowerAfter).to.eq(threePercent); // Should still be 3%
+      expect(userVotingPowerAfter).to.be.lt(newRequiredThreshold); // Less than 4% required
+      
+      // User with 3% can no longer create STANDARD proposal (needs 4% now)
+      await expect(
+        governor.connect(userWithEnoughPower).proposeWithType(targets, values, calldatas, description + " 2", 0)
+      ).to.be.revertedWithCustomError(governor, "InsufficientVotingPowerForStandardProposal");
     });
   });
 });

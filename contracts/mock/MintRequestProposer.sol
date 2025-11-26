@@ -40,5 +40,21 @@ contract MintRequestProposer {
     ) external returns (uint256) {
         return governor.proposeWithType(targets, values, calldatas, description, IHyraGovernor.ProposalType(proposalType));
     }
+    
+    /**
+     * @notice Forward arbitrary call to governor (for testing privileged functions)
+     * @param data Encoded function call data
+     */
+    function forwardCall(bytes memory data) external returns (bytes memory) {
+        (bool success, bytes memory returnData) = address(governor).call(data);
+        if (!success) {
+            // Forward the revert reason/custom error
+            assembly {
+                let returndata_size := mload(returnData)
+                revert(add(32, returnData), returndata_size)
+            }
+        }
+        return returnData;
+    }
 }
 

@@ -58,11 +58,11 @@ contract HyraGovernor is
     // Minimum quorum to prevent governance attacks
     uint256 public constant MINIMUM_QUORUM = 100; // 1% minimum
     
-    // Mint request proposal threshold (3% of total supply)
-    uint256 public constant MINT_REQUEST_THRESHOLD_BPS = 300; // 3% in basis points
+    // Mint request proposal threshold (3% of total supply, can be updated by privileged multisig)
+    uint256 public mintRequestThresholdBps = 300; // 3% in basis points (default)
     
     // Storage gap for upgradeability
-    uint256[43] private __gap; // Reduced by 1 for privilegedMultisigWallet
+    uint256[42] private __gap; // Reduced by 2 (privilegedMultisigWallet + mintRequestThresholdBps)
 
     // ============ Events ============
     event ProposalTypeSet(uint256 indexed proposalId, ProposalType proposalType);
@@ -77,6 +77,7 @@ contract HyraGovernor is
     event QuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
     event VoteCasted(address indexed voter, uint256 proposalId, uint8 support, uint256 weight);
     event PrivilegedMultisigWalletSet(address indexed oldWallet, address indexed newWallet);
+    event MintRequestThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
 
     // ============ Errors ============
     error InvalidProposalType();
@@ -94,6 +95,7 @@ contract HyraGovernor is
     error NotContract();
     error InsufficientVotingPowerForStandardProposal();
     error OnlyPrivilegedMultisigWallet();
+    error InvalidMintRequestThreshold();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -140,6 +142,9 @@ contract HyraGovernor is
             privilegedMultisigWallet = _privilegedMultisigWallet;
             emit PrivilegedMultisigWalletSet(address(0), _privilegedMultisigWallet);
         }
+        
+        // Initialize mint request threshold to default 3% (300 bps)
+        mintRequestThresholdBps = 300;
     }
 
     // ============ Proposal Functions ============
@@ -401,12 +406,33 @@ contract HyraGovernor is
     }
     
     /**
-     * @notice Calculate dynamic proposal threshold for mint requests (3% of total supply)
+     * @notice Calculate dynamic proposal threshold for mint requests
      * @return The required voting power threshold in tokens
      */
     function calculateMintRequestThreshold() public view returns (uint256) {
         uint256 totalSupply = token().getPastTotalSupply(block.number - 1);
-        return (totalSupply * MINT_REQUEST_THRESHOLD_BPS) / 10000;
+        return (totalSupply * mintRequestThresholdBps) / 10000;
+    }
+
+    /**
+     * @notice Set mint request proposal threshold (only privileged multisig wallet)
+     * @param _newThreshold New threshold in basis points (e.g., 300 = 3%, 400 = 4%)
+     * @dev Minimum: 100 (1%), Maximum: 1000 (10%) to prevent abuse
+     */
+    function setMintRequestThreshold(uint256 _newThreshold) external {
+        if (!isPrivilegedMultisig(msg.sender)) {
+            revert OnlyPrivilegedMultisigWallet();
+        }
+        
+        // Validate threshold: between 1% (100 bps) and 10% (1000 bps)
+        if (_newThreshold < 100 || _newThreshold > 1000) {
+            revert InvalidMintRequestThreshold();
+        }
+        
+        uint256 oldThreshold = mintRequestThresholdBps;
+        mintRequestThresholdBps = _newThreshold;
+        
+        emit MintRequestThresholdUpdated(oldThreshold, _newThreshold);
     }
 
     /**
