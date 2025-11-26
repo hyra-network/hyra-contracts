@@ -9,13 +9,15 @@ import {
 } from "./utils/distributionConfig";
 
 /**
+ * npx hardhat run scripts/deploy-mainnet-production.ts --network mainnet
  * Deploy HyraToken to Ethereum Mainnet for PRODUCTION
  * Year 1 starts: January 1, 2025 00:00:00 UTC
  * YEAR_DURATION = 365 days (production setting)
  * MINT_EXECUTION_DELAY = 2 days (production setting)
  */
 async function main() {
-  const envFile = process.env.ENV_FILE || ".env.prod";
+  // Mainnet production ALWAYS uses .env.prod (no override allowed for security)
+  const envFile = ".env.prod";
   dotenv.config({ path: path.resolve(__dirname, "..", envFile) });
 
   const [deployer] = await ethers.getSigners();
@@ -24,6 +26,7 @@ async function main() {
 
   console.log("\nDeploying PRODUCTION contracts to Ethereum Mainnet...\n");
   console.log("WARNING: This is PRODUCTION deployment!");
+  console.log("   Environment file: .env.prod (FIXED - cannot be overridden)");
   console.log("   MINT_EXECUTION_DELAY = 2 DAYS");
   console.log("   YEAR_DURATION = 365 DAYS");
   console.log("   Year 1 starts: January 1, 2025 00:00:00 UTC\n");
