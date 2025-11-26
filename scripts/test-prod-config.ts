@@ -40,6 +40,13 @@ async function main() {
     seedStrategicVC: process.env.SEED_STRATEGIC_VC_WALLET,
   };
 
+  // Get Security Council addresses (for proposal rejection/cancellation)
+  const securityCouncil = {
+    securityCouncil1: process.env.SECURITY_COUNCIL_1,
+    securityCouncil2: process.env.SECURITY_COUNCIL_2,
+    securityCouncil3: process.env.SECURITY_COUNCIL_3,
+  };
+
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -146,16 +153,70 @@ async function main() {
     }
   }
 
+  // 6. Check Security Council addresses (optional but recommended)
+  console.log("\n6. Checking Security Council addresses (for proposal rejection/cancellation)...");
+  for (const [key, address] of Object.entries(securityCouncil)) {
+    if (!address || address === "0x0000000000000000000000000000000000000000") {
+      warnings.push(`Security Council address not set: ${key}`);
+      console.log(`   ⚠️  ${key}: NOT SET (optional but recommended)`);
+    } else {
+      if (!ethers.isAddress(address)) {
+        errors.push(`Invalid Security Council address format: ${key} (${address})`);
+        console.log(`   ❌ ${key}: Invalid format`);
+      } else {
+        try {
+          const code = await ethers.provider.getCode(address);
+          if (code === "0x") {
+            warnings.push(`${key} (${address}) is not a contract - should be a multisig wallet`);
+            console.log(`   ⚠️  ${key}: Not a contract (should be multisig wallet)`);
+          } else {
+            console.log(`   ✅ ${key}: ${address} (contract)`);
+          }
+        } catch (error: any) {
+          warnings.push(`Could not verify ${key}: ${error.message}`);
+          console.log(`   ⚠️  ${key}: Could not verify`);
+        }
+      }
+    }
+  }
+
+  // 7. Check Mint Request Multisig Wallet
+  console.log("\n7. Checking Mint Request Multisig Wallet...");
+  const mintRequestMultisig = process.env.MINT_REQUEST_MULTISIG_WALLET;
+  if (!mintRequestMultisig) {
+    errors.push("MINT_REQUEST_MULTISIG_WALLET not set (required for UPGRADE/CONSTITUTIONAL/MINT REQUEST/EMERGENCY proposals)");
+    console.log("   ❌ MINT_REQUEST_MULTISIG_WALLET: NOT SET (REQUIRED)");
+  } else {
+    if (!ethers.isAddress(mintRequestMultisig)) {
+      errors.push(`Invalid MINT_REQUEST_MULTISIG_WALLET format: ${mintRequestMultisig}`);
+      console.log("   ❌ MINT_REQUEST_MULTISIG_WALLET: Invalid format");
+    } else {
+      try {
+        const code = await ethers.provider.getCode(mintRequestMultisig);
+        if (code === "0x") {
+          errors.push(`MINT_REQUEST_MULTISIG_WALLET (${mintRequestMultisig}) is not a contract`);
+          console.log("   ❌ MINT_REQUEST_MULTISIG_WALLET: Not a contract (must be multisig wallet)");
+        } else {
+          console.log(`   ✅ MINT_REQUEST_MULTISIG_WALLET: ${mintRequestMultisig} (contract)`);
+        }
+      } catch (error: any) {
+        warnings.push(`Could not verify MINT_REQUEST_MULTISIG_WALLET: ${error.message}`);
+        console.log("   ⚠️  MINT_REQUEST_MULTISIG_WALLET: Could not verify");
+      }
+    }
+  }
+
   // Summary
   console.log("\n=== Summary ===");
   if (errors.length === 0) {
-    console.log("✅ All checks passed!");
+    console.log("✅ All required checks passed!");
     console.log("\nConfiguration is ready for production deployment.");
     console.log("\nNext steps:");
     console.log("1. Review all addresses carefully");
     console.log("2. Deploy token contract");
     console.log("3. Run: npx hardhat run scripts/set-distribution-config.ts --network mainnet --execute");
     console.log("4. Initialize contract (initial supply will auto-distribute)");
+    console.log("5. Setup Security Council: npx hardhat run scripts/setup-security-council.ts --network mainnet");
   } else {
     console.log("❌ Errors found:");
     errors.forEach(e => console.log(`   - ${e}`));

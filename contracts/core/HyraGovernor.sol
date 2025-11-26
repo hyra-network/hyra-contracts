@@ -91,6 +91,8 @@ contract HyraGovernor is
     error InsufficientVotingPowerForMintRequest();
     error NotMintRequestMultisig();
     error NotContract();
+    error InsufficientVotingPowerForStandardProposal();
+    error OnlyMintRequestMultisigWallet();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -161,12 +163,28 @@ contract HyraGovernor is
             revert InvalidProposalType();
         }
         
-        // Emergency proposals require security council
-        if (proposalType == ProposalType.EMERGENCY) {
-            if (!securityCouncilMembers[msg.sender]) {
-                revert OnlySecurityCouncil();
+        bool isMintRequestMultisigWallet = isMintRequestMultisig(msg.sender);
+        
+        // Check proposal type requirements
+        if (proposalType == ProposalType.STANDARD) {
+            // STANDARD proposals require 3% total supply voting power
+            uint256 votingPower = token().getVotes(msg.sender);
+            uint256 requiredThreshold = calculateMintRequestThreshold(); // 3% threshold
+            
+            if (votingPower < requiredThreshold) {
+                revert InsufficientVotingPowerForStandardProposal();
+            }
+        } else if (
+            proposalType == ProposalType.UPGRADE ||
+            proposalType == ProposalType.CONSTITUTIONAL ||
+            proposalType == ProposalType.EMERGENCY
+        ) {
+            // UPGRADE, CONSTITUTIONAL, EMERGENCY proposals require Mint Request Multisig Wallet
+            if (!isMintRequestMultisigWallet) {
+                revert OnlyMintRequestMultisigWallet();
             }
         }
+        // MINT REQUEST proposals are validated in propose() function
         
         // Validate proposal arrays
         if (!_validateProposal(targets, values, calldatas)) {
@@ -617,29 +635,35 @@ contract HyraGovernor is
         bool isMintRequestMultisigWallet = isMintRequestMultisig(msg.sender);
         
         if (isMintRequest) {
-            // For mint request proposals, check special requirements
+            // MINT REQUEST proposals require Mint Request Multisig Wallet
             if (!isMintRequestMultisigWallet) {
-                // Not the mint request multisig wallet, check 3% voting power
+                revert OnlyMintRequestMultisigWallet();
+            }
+        } else {
+            // For STANDARD proposals (when called directly without proposeWithType),
+            // require 3% total supply voting power
+            // Note: Mint Request Multisig Wallet can bypass this check (handled in proposalThreshold())
+            // If called from proposeWithType(), proposeWithType() already validates STANDARD proposals
+            if (!isMintRequestMultisigWallet) {
                 uint256 votingPower = token().getVotes(msg.sender);
-                uint256 requiredThreshold = calculateMintRequestThreshold();
+                uint256 requiredThreshold = calculateMintRequestThreshold(); // 3% threshold
                 
                 if (votingPower < requiredThreshold) {
-                    revert InsufficientVotingPowerForMintRequest();
+                    revert InsufficientVotingPowerForStandardProposal();
                 }
             }
-            // If mint request multisig wallet or has >= 3% voting power, proceed
-            // For mint request multisig wallet, we need to bypass normal threshold check
-            // by temporarily using a lower threshold
+            // If isMintRequestMultisigWallet, bypass 3% check (will be validated in proposeWithType if needed)
         }
         
-        // For non-mint-request proposals, or mint request proposals from users with enough power,
-        // use normal proposal threshold (checked by super.propose())
         // For mint request multisig wallet, proposalThreshold() will return 0 to bypass check
         uint256 proposalId = super.propose(targets, values, calldatas, description);
         // Removed duplicate _proposalProposers assignment
         
-        // Set default proposal type as STANDARD
-        proposalTypes[proposalId] = ProposalType.STANDARD;
+        // Set default proposal type as STANDARD (only if not already set by proposeWithType)
+        // proposeWithType() will set the type after calling propose()
+        if (proposalTypes[proposalId] == ProposalType(0)) {
+            proposalTypes[proposalId] = ProposalType.STANDARD;
+        }
         
         return proposalId;
     }
