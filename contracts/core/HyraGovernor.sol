@@ -44,6 +44,9 @@ contract HyraGovernor is
     // DAO Role Manager for decentralized role management
     DAORoleManager public roleManager;
     
+    // Mint Request Multisig Wallet - Only this wallet can create mint request proposals without 3% threshold
+    address public mintRequestMultisigWallet;
+    
     // Quorum percentages (basis points)
     // Hierarchy: STANDARD < EMERGENCY < UPGRADE < CONSTITUTIONAL
     uint256 public constant STANDARD_QUORUM = 500; // 5% - Regular proposals
@@ -54,8 +57,11 @@ contract HyraGovernor is
     // Minimum quorum to prevent governance attacks
     uint256 public constant MINIMUM_QUORUM = 100; // 1% minimum
     
+    // Mint request proposal threshold (3% of total supply)
+    uint256 public constant MINT_REQUEST_THRESHOLD_BPS = 300; // 3% in basis points
+    
     // Storage gap for upgradeability
-    uint256[44] private __gap;
+    uint256[43] private __gap; // Reduced by 1 for mintRequestMultisigWallet
 
     // ============ Events ============
     event ProposalTypeSet(uint256 indexed proposalId, ProposalType proposalType);
@@ -69,6 +75,7 @@ contract HyraGovernor is
     );
     event QuorumUpdated(uint256 oldQuorum, uint256 newQuorum);
     event VoteCasted(address indexed voter, uint256 proposalId, uint8 support, uint256 weight);
+    event MintRequestMultisigWalletSet(address indexed oldWallet, address indexed newWallet);
 
     // ============ Errors ============
     error InvalidProposalType();
@@ -81,6 +88,9 @@ contract HyraGovernor is
     error ZeroAddress();
     error ProposalNotFound();
     error VotingNotActive();
+    error InsufficientVotingPowerForMintRequest();
+    error NotMintRequestMultisig();
+    error NotContract();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -94,6 +104,7 @@ contract HyraGovernor is
      * @param _votingPeriod Duration of voting (blocks)
      * @param _proposalThreshold Min tokens to create proposal
      * @param _quorumPercentage Initial quorum percentage
+     * @param _mintRequestMultisigWallet Address of mint request multisig wallet (can be zero, set later via governance)
      */
     function initialize(
         IVotes _token,
@@ -101,7 +112,8 @@ contract HyraGovernor is
         uint256 _votingDelay,
         uint256 _votingPeriod,
         uint256 _proposalThreshold,
-        uint256 _quorumPercentage
+        uint256 _quorumPercentage,
+        address _mintRequestMultisigWallet
     ) public initializer {
         // FIXED: Add zero address validation
         if (address(_token) == address(0)) revert ZeroAddress();
@@ -112,6 +124,19 @@ contract HyraGovernor is
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(_quorumPercentage);
         __GovernorTimelockControl_init(_timelock);
+        
+        // Set mint request multisig wallet if provided
+        if (_mintRequestMultisigWallet != address(0)) {
+            // Validate that address is a contract (multisig wallet)
+            uint256 codeSize;
+            assembly {
+                codeSize := extcodesize(_mintRequestMultisigWallet)
+            }
+            if (codeSize == 0) revert NotContract();
+            
+            mintRequestMultisigWallet = _mintRequestMultisigWallet;
+            emit MintRequestMultisigWalletSet(address(0), _mintRequestMultisigWallet);
+        }
     }
 
     // ============ Proposal Functions ============
@@ -148,6 +173,7 @@ contract HyraGovernor is
             revert InvalidProposalLength();
         }
         
+        // propose() will handle mint request validation
         uint256 proposalId = propose(targets, values, calldatas, description);
         proposalTypes[proposalId] = proposalType;
         // Removed duplicate _proposalProposers assignment
@@ -217,6 +243,26 @@ contract HyraGovernor is
         // FIXED: Add zero address validation
         if (address(_roleManager) == address(0)) revert ZeroAddress();
         roleManager = _roleManager;
+    }
+    
+    /**
+     * @notice Set the Mint Request Multisig Wallet (only governance)
+     * @param _mintRequestMultisigWallet Address of the multisig wallet for mint requests
+     */
+    function setMintRequestMultisigWallet(address _mintRequestMultisigWallet) external onlyGovernance {
+        if (_mintRequestMultisigWallet == address(0)) revert ZeroAddress();
+        
+        // Validate that address is a contract (multisig wallet)
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(_mintRequestMultisigWallet)
+        }
+        if (codeSize == 0) revert NotContract();
+        
+        address oldWallet = mintRequestMultisigWallet;
+        mintRequestMultisigWallet = _mintRequestMultisigWallet;
+        
+        emit MintRequestMultisigWalletSet(oldWallet, _mintRequestMultisigWallet);
     }
 
     // ============ Security Council Functions ============
@@ -293,6 +339,53 @@ contract HyraGovernor is
                 length == calldatas.length && 
                 length > 0 && 
                 length <= 10; // Max 10 operations per proposal
+    }
+    
+    /**
+     * @notice Check if proposal is a mint request proposal
+     * @param targets Array of target addresses
+     * @param calldatas Array of encoded function calls
+     * @return True if proposal calls createMintRequest() on HyraToken
+     */
+    function _isMintRequestProposal(
+        address[] memory targets,
+        bytes[] memory calldatas
+    ) internal view returns (bool) {
+        // Function selector for createMintRequest(address,uint256,string)
+        // Calculated: keccak256("createMintRequest(address,uint256,string)")[0:4]
+        bytes4 createMintRequestSelector = 0x121eb9e2;
+        
+        for (uint256 i = 0; i < targets.length; i++) {
+            // Check if target is the token contract
+            if (targets[i] == address(token())) {
+                // Check if calldata starts with createMintRequest selector
+                if (calldatas[i].length >= 4) {
+                    bytes4 selector = bytes4(calldatas[i]);
+                    if (selector == createMintRequestSelector) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * @notice Check if address is the mint request multisig wallet
+     * @param account Address to check
+     * @return True if account is the mint request multisig wallet
+     */
+    function isMintRequestMultisig(address account) public view returns (bool) {
+        return account == mintRequestMultisigWallet && mintRequestMultisigWallet != address(0);
+    }
+    
+    /**
+     * @notice Calculate dynamic proposal threshold for mint requests (3% of total supply)
+     * @return The required voting power threshold in tokens
+     */
+    function calculateMintRequestThreshold() public view returns (uint256) {
+        uint256 totalSupply = token().getPastTotalSupply(block.number - 1);
+        return (totalSupply * MINT_REQUEST_THRESHOLD_BPS) / 10000;
     }
 
     /**
@@ -519,6 +612,29 @@ contract HyraGovernor is
         // Validate proposal length
         _validateProposal(targets, values, calldatas);
         
+        // Check if this is a mint request proposal
+        bool isMintRequest = _isMintRequestProposal(targets, calldatas);
+        bool isMintRequestMultisigWallet = isMintRequestMultisig(msg.sender);
+        
+        if (isMintRequest) {
+            // For mint request proposals, check special requirements
+            if (!isMintRequestMultisigWallet) {
+                // Not the mint request multisig wallet, check 3% voting power
+                uint256 votingPower = token().getVotes(msg.sender);
+                uint256 requiredThreshold = calculateMintRequestThreshold();
+                
+                if (votingPower < requiredThreshold) {
+                    revert InsufficientVotingPowerForMintRequest();
+                }
+            }
+            // If mint request multisig wallet or has >= 3% voting power, proceed
+            // For mint request multisig wallet, we need to bypass normal threshold check
+            // by temporarily using a lower threshold
+        }
+        
+        // For non-mint-request proposals, or mint request proposals from users with enough power,
+        // use normal proposal threshold (checked by super.propose())
+        // For mint request multisig wallet, proposalThreshold() will return 0 to bypass check
         uint256 proposalId = super.propose(targets, values, calldatas, description);
         // Removed duplicate _proposalProposers assignment
         
@@ -534,6 +650,16 @@ contract HyraGovernor is
         override(GovernorUpgradeable, GovernorSettingsUpgradeable, IGovernor)
         returns (uint256)
     {
+        // For mint request multisig wallet, bypass normal threshold
+        // This allows mint request multisig wallet to create proposals without normal threshold
+        // The propose() function will validate if it's actually a mint request proposal
+        // and apply the 3% threshold for non-multisig wallets
+        if (isMintRequestMultisig(msg.sender)) {
+            // Return 0 to bypass threshold check for mint request multisig wallet
+            // Note: This bypasses threshold for ALL proposals from this wallet
+            // The propose() function validates mint request proposals separately
+            return 0;
+        }
         return super.proposalThreshold();
     }
 

@@ -95,6 +95,22 @@ async function main() {
 	const HyraGovernor = await ethers.getContractFactory("HyraGovernor");
 	const governorImpl = await HyraGovernor.deploy({ gasLimit: 8_000_000 });
 	await governorImpl.waitForDeployment();
+	// Load and validate Mint Request Multisig Wallet
+	const mintRequestMultisigWallet = process.env.MINT_REQUEST_MULTISIG_WALLET;
+	if (!mintRequestMultisigWallet) {
+		throw new Error("MINT_REQUEST_MULTISIG_WALLET not set in .env");
+	}
+	if (!ethers.isAddress(mintRequestMultisigWallet)) {
+		throw new Error(`Invalid MINT_REQUEST_MULTISIG_WALLET address: ${mintRequestMultisigWallet}`);
+	}
+	
+	// Validate it's a contract (multisig wallet)
+	const code = await ethers.provider.getCode(mintRequestMultisigWallet);
+	if (code === "0x") {
+		throw new Error(`MINT_REQUEST_MULTISIG_WALLET (${mintRequestMultisigWallet}) is not a contract. Must be a multisig wallet.`);
+	}
+	console.log(`   Mint Request Multisig Wallet: ${mintRequestMultisigWallet} (verified as contract)`);
+
 	const govInit = HyraGovernor.interface.encodeFunctionData("initialize", [
 		await tokenProxy.getAddress(),
 		await timelockProxy.getAddress(),
@@ -102,6 +118,7 @@ async function main() {
 		100,
 		ethers.parseEther("1000000"),
 		10,
+		mintRequestMultisigWallet // Mint Request Multisig Wallet
 	]);
 	const governorProxy = await ERC1967Proxy.deploy(await governorImpl.getAddress(), govInit, { gasLimit: 8_000_000 });
 	await governorProxy.waitForDeployment();

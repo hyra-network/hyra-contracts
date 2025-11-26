@@ -51,6 +51,22 @@ npx hardhat test
 ---
 
 ## ** Development & Deployment**
+
+### Environment Variables
+Before deploying, create a `.env` or `.env.prod` file with the required configuration. See [ENV_TEMPLATE.md](./ENV_TEMPLATE.md) for the complete template.
+
+**Required Variables:**
+- `MINT_REQUEST_MULTISIG_WALLET` - Multisig wallet that can create mint request proposals without 3% voting power (must be a contract address)
+- `COMMUNITY_ECOSYSTEM_WALLET` - Distribution wallet (60%)
+- `LIQUIDITY_BUYBACK_RESERVE_WALLET` - Distribution wallet (12%)
+- `MARKETING_PARTNERSHIPS_WALLET` - Distribution wallet (10%)
+- `TEAM_FOUNDERS_WALLET` - Distribution wallet (8%)
+- `STRATEGIC_ADVISORS_WALLET` - Distribution wallet (5%)
+- `SEED_STRATEGIC_VC_WALLET` - Distribution wallet (5%)
+- `SAFE_ADDRESS` - Safe Multisig Wallet for governance
+
+**Important:** All wallet addresses must be contract addresses (multisig wallets), not EOA addresses.
+
 Run local node:
 ```shell
 npx hardhat node
@@ -58,7 +74,7 @@ npx hardhat node
 
 Deploy:
 ```shell
-npx hardhat run scripts/deploy.ts --network localhost
+npx hardhat run scripts/deploy-core-sepolia.ts --network sepolia
 ```
 
 ---
