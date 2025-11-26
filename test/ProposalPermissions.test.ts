@@ -6,7 +6,7 @@
  * 
  * Test cases để verify implementation của proposal permissions theo prompt:
  * - STANDARD: Yêu cầu 3% total supply voting power
- * - UPGRADE, CONSTITUTIONAL, MINT REQUEST, EMERGENCY: Phải thông qua Mint Request Multisig Wallet
+ * - UPGRADE, CONSTITUTIONAL, MINT REQUEST, EMERGENCY: Phải thông qua Privileged Multisig Wallet
  * - Reject/Cancel: Chỉ Security Council members và proposer
  * 
  * ============================================================================
@@ -39,7 +39,7 @@ describe("Proposal Permissions Tests", function () {
   // ============ Test Variables ============
   let token: HyraToken;
   let governor: HyraGovernor;
-  let mintRequestMultisigWallet: any; // MintRequestProposer contract
+  let privilegedMultisigWallet: any; // MintRequestProposer contract (acts as Privileged Multisig Wallet)
   let proposerContract: any; // MintRequestProposer contract
   let securityCouncil1: any; // MockDistributionWallet contract
   let securityCouncil2: any; // MockDistributionWallet contract
@@ -49,7 +49,7 @@ describe("Proposal Permissions Tests", function () {
   let regularUser: SignerWithAddress;
   let deployer: SignerWithAddress;
 
-  async function deployWithMintRequestMultisig() {
+  async function deployWithPrivilegedMultisig() {
     const [deployerSigner, voter1, voter2, alice, bob, carol, vesting] = await ethers.getSigners();
     
     userWithEnoughPower = voter1;
@@ -57,7 +57,7 @@ describe("Proposal Permissions Tests", function () {
     regularUser = alice;
     deployer = deployerSigner;
 
-    // Deploy MintRequestProposer contract to act as mint request multisig wallet
+    // Deploy MintRequestProposer contract to act as privileged multisig wallet
     const MintRequestProposerFactory = await ethers.getContractFactory("MintRequestProposer");
     const proposerContract = await MintRequestProposerFactory.deploy(ethers.ZeroAddress);
     await proposerContract.waitForDeployment();
@@ -117,7 +117,7 @@ describe("Proposal Permissions Tests", function () {
     await timelockProxy.waitForDeployment();
     const timelockContract = await ethers.getContractAt("HyraTimelock", await timelockProxy.getAddress());
 
-    // 3. Deploy Governor with Mint Request Multisig Wallet
+      // 3. Deploy Governor with Privileged Multisig Wallet
     const HyraGovernor = await ethers.getContractFactory("HyraGovernor");
     const governorImpl = await HyraGovernor.deploy();
     await governorImpl.waitForDeployment();
@@ -129,7 +129,7 @@ describe("Proposal Permissions Tests", function () {
       VOTING_PERIOD,
       PROPOSAL_THRESHOLD,
       QUORUM_PERCENTAGE,
-      await proposerContract.getAddress() // Mint Request Multisig Wallet
+      await proposerContract.getAddress() // Privileged Multisig Wallet
     ]);
 
     const governorProxy = await ERC1967Proxy.deploy(await governorImpl.getAddress(), governorInitData);
@@ -188,7 +188,7 @@ describe("Proposal Permissions Tests", function () {
       token: tokenContract,
       governor: governorContract,
       timelock: timelockContract,
-      mintRequestMultisigWallet: proposerContract,
+      privilegedMultisigWallet: proposerContract,
       proposerContract: proposerContract,
       securityCouncil1: sc1,
       securityCouncil2: sc2,
@@ -203,7 +203,7 @@ describe("Proposal Permissions Tests", function () {
 
   describe("1. Test Tạo STANDARD Proposal", function () {
     it("✅ User có >= 3% total supply voting power → tạo proposal thành công", async function () {
-      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -234,7 +234,7 @@ describe("Proposal Permissions Tests", function () {
     });
 
     it("❌ User có < 3% total supply voting power → revert", async function () {
-      const { governor, token, userWithoutEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithoutEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -255,7 +255,7 @@ describe("Proposal Permissions Tests", function () {
     });
 
     it("✅ Verify proposal được tạo với type STANDARD", async function () {
-      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -279,15 +279,15 @@ describe("Proposal Permissions Tests", function () {
   });
 
   describe("2. Test Tạo UPGRADE Proposal", function () {
-    it("✅ Mint Request Multisig Wallet → tạo proposal thành công", async function () {
-      const { governor, token, proposerContract } = await loadFixture(deployWithMintRequestMultisig);
+    it("✅ Privileged Multisig Wallet → tạo proposal thành công", async function () {
+      const { governor, token, proposerContract } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
       const calldatas = [token.interface.encodeFunctionData("pause", [])];
       const description = "Upgrade proposal test";
 
-      // Create UPGRADE proposal from Mint Request Multisig Wallet via proposer contract
+      // Create UPGRADE proposal from Privileged Multisig Wallet via proposer contract
       const tx = await proposerContract.proposeWithType(
         targets,
         values,
@@ -307,8 +307,8 @@ describe("Proposal Permissions Tests", function () {
       expect(await governor.proposalTypes(proposalId)).to.eq(ProposalType.UPGRADE);
     });
 
-    it("❌ User thường (không phải Mint Request Multisig Wallet) → revert", async function () {
-      const { governor, token, regularUser } = await loadFixture(deployWithMintRequestMultisig);
+    it("❌ User thường (không phải Privileged Multisig Wallet) → revert", async function () {
+      const { governor, token, regularUser } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -319,11 +319,11 @@ describe("Proposal Permissions Tests", function () {
         governor
           .connect(regularUser)
           .proposeWithType(targets, values, calldatas, description, ProposalType.UPGRADE)
-      ).to.be.revertedWithCustomError(governor, "OnlyMintRequestMultisigWallet");
+      ).to.be.revertedWithCustomError(governor, "OnlyPrivilegedMultisigWallet");
     });
 
     it("✅ Verify proposal được tạo với type UPGRADE", async function () {
-      const { governor, token, proposerContract } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, proposerContract } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -351,8 +351,8 @@ describe("Proposal Permissions Tests", function () {
   });
 
   describe("3. Test Tạo CONSTITUTIONAL Proposal", function () {
-    it("✅ Mint Request Multisig Wallet → tạo proposal thành công", async function () {
-      const { governor, token, proposerContract } = await loadFixture(deployWithMintRequestMultisig);
+    it("✅ Privileged Multisig Wallet → tạo proposal thành công", async function () {
+      const { governor, token, proposerContract } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -378,8 +378,8 @@ describe("Proposal Permissions Tests", function () {
       expect(await governor.proposalTypes(proposalId)).to.eq(ProposalType.CONSTITUTIONAL);
     });
 
-    it("❌ User thường (không phải Mint Request Multisig Wallet) → revert", async function () {
-      const { governor, token, regularUser } = await loadFixture(deployWithMintRequestMultisig);
+    it("❌ User thường (không phải Privileged Multisig Wallet) → revert", async function () {
+      const { governor, token, regularUser } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -390,13 +390,13 @@ describe("Proposal Permissions Tests", function () {
         governor
           .connect(regularUser)
           .proposeWithType(targets, values, calldatas, description, ProposalType.CONSTITUTIONAL)
-      ).to.be.revertedWithCustomError(governor, "OnlyMintRequestMultisigWallet");
+      ).to.be.revertedWithCustomError(governor, "OnlyPrivilegedMultisigWallet");
     });
   });
 
   describe("4. Test Tạo MINT REQUEST Proposal", function () {
-    it("✅ Mint Request Multisig Wallet → tạo proposal thành công", async function () {
-      const { governor, token, proposerContract, regularUser } = await loadFixture(deployWithMintRequestMultisig);
+    it("✅ Privileged Multisig Wallet → tạo proposal thành công", async function () {
+      const { governor, token, proposerContract, regularUser } = await loadFixture(deployWithPrivilegedMultisig);
 
       // Create a mint request proposal
       const targets = [await token.getAddress()];
@@ -423,8 +423,8 @@ describe("Proposal Permissions Tests", function () {
       expect(await governor.state(proposalId)).to.eq(0); // Pending
     });
 
-    it("❌ User thường (không phải Mint Request Multisig Wallet) → revert", async function () {
-      const { governor, token, regularUser } = await loadFixture(deployWithMintRequestMultisig);
+    it("❌ User thường (không phải Privileged Multisig Wallet) → revert", async function () {
+      const { governor, token, regularUser } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -439,13 +439,13 @@ describe("Proposal Permissions Tests", function () {
 
       await expect(
         governor.connect(regularUser).propose(targets, values, calldatas, description)
-      ).to.be.revertedWithCustomError(governor, "OnlyMintRequestMultisigWallet");
+      ).to.be.revertedWithCustomError(governor, "OnlyPrivilegedMultisigWallet");
     });
   });
 
   describe("5. Test Tạo EMERGENCY Proposal", function () {
-    it("✅ Mint Request Multisig Wallet → tạo proposal thành công", async function () {
-      const { governor, token, proposerContract } = await loadFixture(deployWithMintRequestMultisig);
+    it("✅ Privileged Multisig Wallet → tạo proposal thành công", async function () {
+      const { governor, token, proposerContract } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -471,8 +471,8 @@ describe("Proposal Permissions Tests", function () {
       expect(await governor.proposalTypes(proposalId)).to.eq(ProposalType.EMERGENCY);
     });
 
-    it("❌ User thường (không phải Mint Request Multisig Wallet) → revert", async function () {
-      const { governor, token, regularUser } = await loadFixture(deployWithMintRequestMultisig);
+    it("❌ User thường (không phải Privileged Multisig Wallet) → revert", async function () {
+      const { governor, token, regularUser } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -483,14 +483,14 @@ describe("Proposal Permissions Tests", function () {
         governor
           .connect(regularUser)
           .proposeWithType(targets, values, calldatas, description, ProposalType.EMERGENCY)
-      ).to.be.revertedWithCustomError(governor, "OnlyMintRequestMultisigWallet");
+      ).to.be.revertedWithCustomError(governor, "OnlyPrivilegedMultisigWallet");
     });
   });
 
   describe("6. Test Reject/Cancel Proposal", function () {
     it("✅ Security Council member → cancel proposal thành công", async function () {
       const { governor, token, userWithEnoughPower, securityCouncil1, deployer } = await loadFixture(
-        deployWithMintRequestMultisig
+        deployWithPrivilegedMultisig
       );
 
       // Note: In production, Security Council members are added via governance proposal
@@ -535,7 +535,7 @@ describe("Proposal Permissions Tests", function () {
     });
 
     it("✅ Proposer của proposal → cancel proposal của chính mình thành công", async function () {
-      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -565,7 +565,7 @@ describe("Proposal Permissions Tests", function () {
 
     it("❌ User thường (không phải Security Council, không phải proposer) → revert", async function () {
       const { governor, token, userWithEnoughPower, regularUser } = await loadFixture(
-        deployWithMintRequestMultisig
+        deployWithPrivilegedMultisig
       );
 
       const targets = [await token.getAddress()];
@@ -587,7 +587,7 @@ describe("Proposal Permissions Tests", function () {
     });
 
     it("✅ Verify proposal state chuyển sang Canceled sau khi cancel", async function () {
-      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -620,7 +620,7 @@ describe("Proposal Permissions Tests", function () {
 
   describe("7. Test Edge Cases", function () {
     it("❌ Tạo proposal với type không hợp lệ → revert InvalidProposalType", async function () {
-      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -639,7 +639,7 @@ describe("Proposal Permissions Tests", function () {
     });
 
     it("❌ Cancel proposal đã bị cancel → revert ProposalAlreadyCancelled", async function () {
-      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       const targets = [await token.getAddress()];
       const values = [0n];
@@ -666,7 +666,7 @@ describe("Proposal Permissions Tests", function () {
     });
 
     it("✅ Verify Security Council có thể cancel proposal ở bất kỳ state nào (trừ Canceled)", async function () {
-      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithMintRequestMultisig);
+      const { governor, token, userWithEnoughPower } = await loadFixture(deployWithPrivilegedMultisig);
 
       // This test verifies the logic that Security Council can cancel proposals in any state
       // Note: Full implementation requires Security Council member to be added via governance

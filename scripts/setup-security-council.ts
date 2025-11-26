@@ -156,7 +156,7 @@ async function main() {
     console.error("\n❌ Error creating proposal:");
     if (error.message?.includes("InsufficientVotingPowerForStandardProposal")) {
       console.error("   You need at least 3% total supply voting power to create STANDARD proposals.");
-      console.error("   Consider using Mint Request Multisig Wallet or getting more voting power.");
+      console.error("   Consider using Privileged Multisig Wallet or getting more voting power.");
     } else {
       console.error(`   ${error.message}`);
     }

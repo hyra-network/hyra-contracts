@@ -180,28 +180,28 @@ async function main() {
     }
   }
 
-  // 7. Check Mint Request Multisig Wallet
-  console.log("\n7. Checking Mint Request Multisig Wallet...");
-  const mintRequestMultisig = process.env.MINT_REQUEST_MULTISIG_WALLET;
-  if (!mintRequestMultisig) {
-    errors.push("MINT_REQUEST_MULTISIG_WALLET not set (required for UPGRADE/CONSTITUTIONAL/MINT REQUEST/EMERGENCY proposals)");
-    console.log("   ❌ MINT_REQUEST_MULTISIG_WALLET: NOT SET (REQUIRED)");
+  // 7. Check Privileged Multisig Wallet
+  console.log("\n7. Checking Privileged Multisig Wallet...");
+  const privilegedMultisig = process.env.PRIVILEGED_MULTISIG_WALLET;
+  if (!privilegedMultisig) {
+    errors.push("PRIVILEGED_MULTISIG_WALLET not set (required for UPGRADE/CONSTITUTIONAL/MINT REQUEST/EMERGENCY proposals)");
+    console.log("   ❌ PRIVILEGED_MULTISIG_WALLET: NOT SET (REQUIRED)");
   } else {
-    if (!ethers.isAddress(mintRequestMultisig)) {
-      errors.push(`Invalid MINT_REQUEST_MULTISIG_WALLET format: ${mintRequestMultisig}`);
-      console.log("   ❌ MINT_REQUEST_MULTISIG_WALLET: Invalid format");
+    if (!ethers.isAddress(privilegedMultisig)) {
+      errors.push(`Invalid PRIVILEGED_MULTISIG_WALLET format: ${privilegedMultisig}`);
+      console.log("   ❌ PRIVILEGED_MULTISIG_WALLET: Invalid format");
     } else {
       try {
-        const code = await ethers.provider.getCode(mintRequestMultisig);
+        const code = await ethers.provider.getCode(privilegedMultisig);
         if (code === "0x") {
-          errors.push(`MINT_REQUEST_MULTISIG_WALLET (${mintRequestMultisig}) is not a contract`);
-          console.log("   ❌ MINT_REQUEST_MULTISIG_WALLET: Not a contract (must be multisig wallet)");
+          errors.push(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisig}) is not a contract`);
+          console.log("   ❌ PRIVILEGED_MULTISIG_WALLET: Not a contract (must be multisig wallet)");
         } else {
-          console.log(`   ✅ MINT_REQUEST_MULTISIG_WALLET: ${mintRequestMultisig} (contract)`);
+          console.log(`   ✅ PRIVILEGED_MULTISIG_WALLET: ${privilegedMultisig} (contract)`);
         }
       } catch (error: any) {
-        warnings.push(`Could not verify MINT_REQUEST_MULTISIG_WALLET: ${error.message}`);
-        console.log("   ⚠️  MINT_REQUEST_MULTISIG_WALLET: Could not verify");
+        warnings.push(`Could not verify PRIVILEGED_MULTISIG_WALLET: ${error.message}`);
+        console.log("   ⚠️  PRIVILEGED_MULTISIG_WALLET: Could not verify");
       }
     }
   }

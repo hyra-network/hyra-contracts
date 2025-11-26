@@ -5,8 +5,8 @@ import "../interfaces/IHyraGovernor.sol";
 
 /**
  * @title MintRequestProposer
- * @notice Simple contract wrapper for testing mint request proposals
- * @dev This contract allows testing the mint request multisig wallet logic
+ * @notice Simple contract wrapper for testing privileged proposals
+ * @dev This contract allows testing the privileged multisig wallet logic
  */
 contract MintRequestProposer {
     IHyraGovernor public governor;

@@ -46,21 +46,21 @@ async function main() {
   console.log("\n2. Deploying Governor Proxy...");
   const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
 
-  // Load and validate Mint Request Multisig Wallet
-  const mintRequestMultisigWallet = process.env.MINT_REQUEST_MULTISIG_WALLET;
-  if (!mintRequestMultisigWallet) {
-    throw new Error("MINT_REQUEST_MULTISIG_WALLET not set in .env");
+  // Load and validate Privileged Multisig Wallet
+  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
+  if (!privilegedMultisigWallet) {
+    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env");
   }
-  if (!ethers.isAddress(mintRequestMultisigWallet)) {
-    throw new Error(`Invalid MINT_REQUEST_MULTISIG_WALLET address: ${mintRequestMultisigWallet}`);
+  if (!ethers.isAddress(privilegedMultisigWallet)) {
+    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
   }
   
   // Validate it's a contract (multisig wallet)
-  const code = await ethers.provider.getCode(mintRequestMultisigWallet);
+  const code = await ethers.provider.getCode(privilegedMultisigWallet);
   if (code === "0x") {
-    throw new Error(`MINT_REQUEST_MULTISIG_WALLET (${mintRequestMultisigWallet}) is not a contract. Must be a multisig wallet.`);
+    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
   }
-  console.log(`   Mint Request Multisig Wallet: ${mintRequestMultisigWallet} (verified as contract)`);
+  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
 
   const governorInit = HyraGovernor.interface.encodeFunctionData("initialize", [
     tokenAddress,
@@ -69,7 +69,7 @@ async function main() {
     50400,                          // votingPeriod = 1 week
     ethers.parseEther("1000000"),   // proposalThreshold = 1M tokens
     4,                              // quorumPercentage = 4%
-    mintRequestMultisigWallet       // Mint Request Multisig Wallet
+    privilegedMultisigWallet       // Privileged Multisig Wallet
   ]);
   
   const governorProxy = await ERC1967Proxy.deploy(await governorImpl.getAddress(), governorInit, { gasLimit: 8_000_000 });

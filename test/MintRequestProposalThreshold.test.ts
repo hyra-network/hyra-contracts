@@ -5,7 +5,7 @@
  * ============================================================================
  * 
  * Test cases để verify implementation của mint request proposal threshold:
- * - Chỉ Mint Request Multisig Wallet hoặc user có >= 3% voting power mới được tạo proposal mint request
+ * - Chỉ Privileged Multisig Wallet hoặc user có >= 3% voting power mới được tạo proposal mint request
  * - Các test cases theo prompt requirements
  * 
  * ============================================================================
@@ -36,8 +36,8 @@ describe("Mint Request Proposal Threshold Tests", function () {
   let timelock: HyraTimelock;
   
   let deployer: SignerWithAddress;
-  let mintRequestMultisig: SignerWithAddress;
-  let mintRequestMultisigWallet: MockDistributionWallet;
+  let privilegedMultisig: SignerWithAddress;
+  let privilegedMultisigWallet: MockDistributionWallet;
   let proposerContract: MintRequestProposer;
   let userWithEnoughPower: SignerWithAddress;
   let userWithoutEnoughPower: SignerWithAddress;
@@ -59,7 +59,7 @@ describe("Mint Request Proposal Threshold Tests", function () {
   async function deployDAOSystem() {
     [
       deployer,
-      mintRequestMultisig,
+      privilegedMultisig,
       userWithEnoughPower,
       userWithoutEnoughPower,
       recipient,
@@ -67,7 +67,7 @@ describe("Mint Request Proposal Threshold Tests", function () {
     ] = await ethers.getSigners();
 
     // Deploy MockDistributionWallet for mint request multisig
-    mintRequestMultisigWallet = await deployDistributionWallet(mintRequestMultisig);
+    privilegedMultisigWallet = await deployDistributionWallet(privilegedMultisig);
     distributionWallet1 = await deployDistributionWallet(vesting);
     regularMultisig = await deployDistributionWallet(deployer);
 
@@ -156,8 +156,8 @@ describe("Mint Request Proposal Threshold Tests", function () {
     await timelockContract.grantRole(PROPOSER_ROLE, await governorContract.getAddress());
     await timelockContract.grantRole(EXECUTOR_ROLE, ethers.ZeroAddress);
 
-    // 5. Verify Mint Request Multisig Wallet was set during initialization
-    const setWallet = await governorContract.mintRequestMultisigWallet();
+    // 5. Verify Privileged Multisig Wallet was set during initialization
+    const setWallet = await governorContract.privilegedMultisigWallet();
     expect(setWallet).to.equal(await proposerContract.getAddress());
 
     // 6. Transfer ownership
@@ -221,15 +221,15 @@ describe("Mint Request Proposal Threshold Tests", function () {
   // ============================================================================
   // TEST SUITE 1: MINT REQUEST MULTISIG WALLET
   // ============================================================================
-  describe("Mint Request Multisig Wallet Tests", function () {
+  describe("Privileged Multisig Wallet Tests", function () {
     
-    it("Should allow Mint Request Multisig Wallet to create mint request proposal (bypass 3%)", async function () {
+    it("Should allow Privileged Multisig Wallet to create mint request proposal (bypass 3%)", async function () {
       const amount = ethers.parseEther("1000000");
       const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
       
-      // Mint Request Multisig Wallet should be able to create proposal without 3% voting power
+      // Privileged Multisig Wallet should be able to create proposal without 3% voting power
       // Call propose() through the proposer contract (simulating multisig wallet)
-      const tx = await proposerContract.connect(mintRequestMultisig).propose(
+      const tx = await proposerContract.connect(privilegedMultisig).propose(
         [await token.getAddress()],
         [0],
         [calldata],
@@ -251,16 +251,16 @@ describe("Mint Request Proposal Threshold Tests", function () {
       expect(event).to.not.be.undefined;
     });
 
-    it("Should require Mint Request Multisig Wallet to follow normal threshold for non-mint proposals", async function () {
+    it("Should require Privileged Multisig Wallet to follow normal threshold for non-mint proposals", async function () {
       // Create a proposal that doesn't call createMintRequest
       // Use a simple transfer or other function that's not createMintRequest
       // For testing, we'll use a dummy calldata that's not createMintRequest
       const dummyCalldata = "0x12345678"; // Dummy function selector
       
-      // Mint Request Multisig Wallet has no voting power, so should fail for non-mint proposals
+      // Privileged Multisig Wallet has no voting power, so should fail for non-mint proposals
       // This will revert in super.propose() due to insufficient voting power for normal threshold
       await expect(
-        governor.connect(mintRequestMultisig).propose(
+        governor.connect(privilegedMultisig).propose(
           [await governor.getAddress()],
           [0],
           [dummyCalldata],
@@ -269,7 +269,7 @@ describe("Mint Request Proposal Threshold Tests", function () {
       ).to.be.reverted; // Should revert due to insufficient voting power for normal threshold
     });
 
-    it("Should correctly identify Mint Request Multisig Wallet", async function () {
+    it("Should correctly identify Privileged Multisig Wallet", async function () {
       const isMultisig = await governor.isMintRequestMultisig(await proposerContract.getAddress());
       expect(isMultisig).to.be.true;
 
@@ -415,14 +415,14 @@ describe("Mint Request Proposal Threshold Tests", function () {
   // ============================================================================
   describe("Validation Tests", function () {
     
-    it("Should reject setting zero address as Mint Request Multisig Wallet", async function () {
+    it("Should reject setting zero address as Privileged Multisig Wallet", async function () {
       // Note: Validation is already tested in initialize() function
       // This test verifies that setMintRequestMultisigWallet() also has validation
       // However, onlyGovernance modifier requires governance queue which is complex to set up
       // So we'll verify the validation logic exists by checking the function signature
       // and that it reverts when called with zero address
       
-      // The validation is: if (_mintRequestMultisigWallet == address(0)) revert ZeroAddress();
+      // The validation is: if (_privilegedMultisigWallet == address(0)) revert ZeroAddress();
       // This is tested implicitly through the initialize() function which already validates
       // For setMintRequestMultisigWallet(), the validation exists but requires governance execution
       // which is complex to test. The important part is that the validation code exists.
@@ -438,7 +438,7 @@ describe("Mint Request Proposal Threshold Tests", function () {
       expect(true).to.be.true; // Placeholder - validation exists in code
     });
 
-    it("Should reject setting EOA address as Mint Request Multisig Wallet", async function () {
+    it("Should reject setting EOA address as Privileged Multisig Wallet", async function () {
       // Note: Validation is already tested in initialize() function
       // This test verifies that setMintRequestMultisigWallet() also validates contract addresses
       // The validation checks: if (codeSize == 0) revert NotContract();
@@ -450,7 +450,7 @@ describe("Mint Request Proposal Threshold Tests", function () {
       
       // The actual validation happens in the function body:
       // uint256 codeSize;
-      // assembly { codeSize := extcodesize(_mintRequestMultisigWallet) }
+      // assembly { codeSize := extcodesize(_privilegedMultisigWallet) }
       // if (codeSize == 0) revert NotContract();
       // This is tested in initialize() when we try to set a contract address vs EOA
       
@@ -466,7 +466,7 @@ describe("Mint Request Proposal Threshold Tests", function () {
       // _isMintRequestProposal is internal, so we test it indirectly
       // by checking if proposal creation works for mint request multisig wallet
       // The mint request multisig wallet should be able to create proposal without 3% voting power
-      const tx = await proposerContract.connect(mintRequestMultisig).propose(
+      const tx = await proposerContract.connect(privilegedMultisig).propose(
         [await token.getAddress()],
         [0],
         [calldata],
@@ -494,12 +494,12 @@ describe("Mint Request Proposal Threshold Tests", function () {
   // ============================================================================
   describe("ProposeWithType Tests", function () {
     
-    it("Should allow Mint Request Multisig Wallet to create mint request via proposeWithType", async function () {
+    it("Should allow Privileged Multisig Wallet to create mint request via proposeWithType", async function () {
       const amount = ethers.parseEther("1000000");
       const calldata = createMintRequestCalldata(token, await recipient.getAddress(), amount);
       
       // Call proposeWithType through proposerContract (simulating multisig wallet)
-      const tx = await proposerContract.connect(mintRequestMultisig).proposeWithType(
+      const tx = await proposerContract.connect(privilegedMultisig).proposeWithType(
         [await token.getAddress()],
         [0],
         [calldata],

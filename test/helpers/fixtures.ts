@@ -126,7 +126,7 @@ export async function deployCore() {
     VOTING_PERIOD,
     PROPOSAL_THRESHOLD,
     BASE_QUORUM_PERCENT,
-    ethers.ZeroAddress, // mintRequestMultisigWallet - can be set later via governance
+    ethers.ZeroAddress, // privilegedMultisigWallet - can be set later via governance
   ]);
 
   const governorProxy = await proxyDeployer.deployProxy.staticCall(

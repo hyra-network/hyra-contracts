@@ -56,7 +56,7 @@ npx hardhat test
 Before deploying, create a `.env` or `.env.prod` file with the required configuration. See [ENV_TEMPLATE.md](./ENV_TEMPLATE.md) for the complete template.
 
 **Required Variables:**
-- `MINT_REQUEST_MULTISIG_WALLET` - Multisig wallet that can create mint request proposals without 3% voting power (must be a contract address)
+- `PRIVILEGED_MULTISIG_WALLET` - Privileged multisig wallet that can create UPGRADE, CONSTITUTIONAL, EMERGENCY, MINT REQUEST proposals and can be used for other privileged operations like tokenMintFeed (must be a contract address)
 - `COMMUNITY_ECOSYSTEM_WALLET` - Distribution wallet (60%)
 - `LIQUIDITY_BUYBACK_RESERVE_WALLET` - Distribution wallet (12%)
 - `MARKETING_PARTNERSHIPS_WALLET` - Distribution wallet (10%)
