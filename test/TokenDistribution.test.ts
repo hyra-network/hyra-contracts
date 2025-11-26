@@ -83,6 +83,7 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
             VOTING_PERIOD,
             PROPOSAL_THRESHOLD,
             QUORUM_PERCENTAGE,
+            await privilegedMultisig.getAddress() // privilegedMultisigWallet (already deployed above)
         ]);
         const govProxy = await ERC1967Proxy.deploy(await govImpl.getAddress(), govInit);
         await govProxy.waitForDeployment();
@@ -244,6 +245,9 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
                 multisig1, multisig2, multisig3, multisig4, multisig5, multisig6
             );
 
+            // Deploy mock contract for privilegedMultisigWallet
+            const privilegedMultisig = await deployMockMultisig();
+
             // Initialize token (will auto-distribute)
             await initializedToken.initialize(
                 "HYRA",
@@ -252,6 +256,7 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
                 await owner.getAddress(),  // vesting (not used when distributing)
                 await timelock.getAddress(),
                 0,
+                privilegedMultisig, // privilegedMultisigWallet
             );
 
             // Check balances
@@ -284,6 +289,9 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
             await tokenProxy.waitForDeployment();
             const newToken = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
 
+            // Deploy mock contract for privilegedMultisigWallet
+            const privilegedMultisig = await deployMockMultisig();
+
             // Try to initialize without setting config first
             await expect(
                 newToken.initialize(
@@ -292,7 +300,8 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
                     INITIAL_SUPPLY,
                     await owner.getAddress(),
                     await timelock.getAddress(),
-                    0
+                    0,
+                    privilegedMultisig // privilegedMultisigWallet
                 )
             ).to.be.revertedWithCustomError(newToken, "ConfigNotSet");
         });
@@ -331,6 +340,7 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
             );
 
             // Initialize token (will auto-distribute initial supply)
+            const privilegedMultisig = await deployMockMultisig();
             await testToken.initialize(
                 "HYRA",
                 "HYRA",
@@ -338,6 +348,7 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
                 await owner.getAddress(),
                 await timelock.getAddress(),
                 0,
+                privilegedMultisig // privilegedMultisigWallet
             );
 
             // Transfer ownership to timelock
@@ -425,13 +436,15 @@ describe("Token Distribution to 6 Multisig Wallets", function () {
             );
 
             // Initialize with test amount
+            const privilegedMultisig = await deployMockMultisig();
             await testToken.initialize(
                 "HYRA",
                 "HYRA",
                 testAmount,
                 await owner.getAddress(),
                 await timelock.getAddress(),
-                0
+                0,
+                privilegedMultisig // privilegedMultisigWallet
             );
 
             const balance1 = await testToken.balanceOf(multisig1);

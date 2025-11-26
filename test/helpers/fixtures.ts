@@ -101,6 +101,11 @@ export async function deployCore() {
     distributionWallets[5]
   );
 
+  // Deploy a mock contract to use as privilegedMultisigWallet (must be contract, not EOA)
+  const MockMultisig = await ethers.getContractFactory("MockDistributionWallet");
+  const privilegedMultisig = await MockMultisig.deploy(deployer.address);
+  await privilegedMultisig.waitForDeployment();
+
   // Now initialize token
   await token.initialize(
     NAME,
@@ -108,7 +113,8 @@ export async function deployCore() {
     INITIAL_SUPPLY,
     voter1.address,
     timelockProxyAddr, // owner/governance is Timelock (proxy)
-    0 // yearStartTime - 0 means use block.timestamp
+    0, // yearStartTime - 0 means use block.timestamp
+    await privilegedMultisig.getAddress() // privilegedMultisigWallet (must be contract)
   );
 
   await (await proxyAdmin.addProxy(tokenProxy, "HyraToken")).wait(); // add token proxy to proxy admin

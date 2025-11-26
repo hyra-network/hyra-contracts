@@ -28,17 +28,45 @@ describe("Reentrancy Attack Tests", function () {
     // Deploy via ERC1967Proxy with init data
     const TokenImpl = await HyraTokenFactory.deploy();
     await TokenImpl.waitForDeployment();
-    const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initialize", [
+    // Deploy proxy with empty init data first (to set distribution config before initialize)
+    const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+    const tokenProxy = await ERC1967Proxy.deploy(await TokenImpl.getAddress(), "0x");
+    await tokenProxy.waitForDeployment();
+    token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+
+    // Deploy mock distribution wallets for setDistributionConfig
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const distributionWallets = [];
+    for (let i = 0; i < 6; i++) {
+      const wallet = await MockDistributionWallet.deploy(await owner.getAddress());
+      await wallet.waitForDeployment();
+      distributionWallets.push(await wallet.getAddress());
+    }
+
+    // Set distribution config BEFORE initialize
+    await token.setDistributionConfig(
+      distributionWallets[0],
+      distributionWallets[1],
+      distributionWallets[2],
+      distributionWallets[3],
+      distributionWallets[4],
+      distributionWallets[5]
+    );
+
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisig = await MockDistributionWallet.deploy(await owner.getAddress());
+    await privilegedMultisig.waitForDeployment();
+
+    // Now initialize token
+    await token.initialize(
       "HYRA",
       "HYRA",
       ethers.parseEther("1000000"),
       await owner.getAddress(), // vesting recipient (for test simplicity)
       await owner.getAddress(),
-    ]);
-    const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-    const tokenProxy = await ERC1967Proxy.deploy(await TokenImpl.getAddress(), tokenInit);
-    await tokenProxy.waitForDeployment();
-    token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+      0, // yearStartTime
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
+    );
     await token.connect(owner).delegate(await owner.getAddress());
 
     const TimelockImpl = await HyraTimelockFactory.deploy();
@@ -62,6 +90,7 @@ describe("Reentrancy Attack Tests", function () {
       100,
       ethers.parseEther("1000"),
       10,
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet (already deployed above)
     ]);
     const govProxy = await ERC1967Proxy.deploy(await GovernorImpl.getAddress(), govInit);
     await govProxy.waitForDeployment();

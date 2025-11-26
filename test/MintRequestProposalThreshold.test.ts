@@ -96,13 +96,17 @@ describe("Mint Request Proposal Threshold Tests", function () {
       await distributionWallets[5].getAddress()
     );
 
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisigWallet = await deployDistributionWallet(vesting);
+
     await tokenContract.initialize(
       "HYRA Token",
       "HYRA",
       INITIAL_SUPPLY,
       await vesting.getAddress(),
       await deployer.getAddress(),
-      0
+      0,
+      await privilegedMultisigWallet.getAddress() // privilegedMultisigWallet
     );
 
     // 2. Deploy Timelock

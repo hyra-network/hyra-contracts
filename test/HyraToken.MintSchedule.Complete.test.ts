@@ -71,18 +71,46 @@ describe("HYRA TOKEN", function () {
     await tokenImpl.waitForDeployment();
 
     const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-    const initData = HyraToken.interface.encodeFunctionData("initialize", [
+    // Deploy proxy with empty init data first (to set distribution config before initialize)
+    const proxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x");
+    await proxy.waitForDeployment();
+    const token = await ethers.getContractAt("HyraToken", await proxy.getAddress());
+
+    // Deploy mock distribution wallets for setDistributionConfig
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const distributionWallets = [];
+    for (let i = 0; i < 6; i++) {
+      const wallet = await MockDistributionWallet.deploy(await owner.getAddress());
+      await wallet.waitForDeployment();
+      distributionWallets.push(await wallet.getAddress());
+    }
+
+    // Set distribution config BEFORE initialize
+    await token.setDistributionConfig(
+      distributionWallets[0],
+      distributionWallets[1],
+      distributionWallets[2],
+      distributionWallets[3],
+      distributionWallets[4],
+      distributionWallets[5]
+    );
+
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisig = await MockDistributionWallet.deploy(await owner.getAddress());
+    await privilegedMultisig.waitForDeployment();
+
+    // Now initialize token
+    await token.initialize(
       "HYRA",
       "HYRA",
       INITIAL_SUPPLY,
       await vesting.getAddress(),
-      await owner.getAddress()
-    ]);
-    
-    const proxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), initData);
-    await proxy.waitForDeployment();
+      await owner.getAddress(),
+      0, // yearStartTime
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
+    );
 
-    return await ethers.getContractAt("HyraToken", await proxy.getAddress());
+    return token;
   }
 
   /**

@@ -19,18 +19,45 @@ describe("HNA-07 Complete Tests", function () {
         const HyraTokenFactory = await hardhat_1.ethers.getContractFactory("HyraToken");
         const implementation = await HyraTokenFactory.deploy();
         await implementation.waitForDeployment();
-        // Create proxy and initialize
-        const initData = implementation.interface.encodeFunctionData("initialize", [
+        // Deploy proxy with empty init data first (to set distribution config before initialize)
+        const ProxyFactory = await hardhat_1.ethers.getContractFactory("ERC1967Proxy");
+        const proxy = await ProxyFactory.deploy(await implementation.getAddress(), "0x");
+        await proxy.waitForDeployment();
+        token = await hardhat_1.ethers.getContractAt("HyraToken", await proxy.getAddress());
+
+        // Deploy mock distribution wallets for setDistributionConfig
+        const MockDistributionWallet = await hardhat_1.ethers.getContractFactory("MockDistributionWallet");
+        const distributionWallets = [];
+        for (let i = 0; i < 6; i++) {
+            const wallet = await MockDistributionWallet.deploy(await owner.getAddress());
+            await wallet.waitForDeployment();
+            distributionWallets.push(await wallet.getAddress());
+        }
+
+        // Set distribution config BEFORE initialize
+        await token.setDistributionConfig(
+            distributionWallets[0],
+            distributionWallets[1],
+            distributionWallets[2],
+            distributionWallets[3],
+            distributionWallets[4],
+            distributionWallets[5]
+        );
+
+        // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+        const privilegedMultisig = await MockDistributionWallet.deploy(await owner.getAddress());
+        await privilegedMultisig.waitForDeployment();
+
+        // Now initialize token
+        await token.initialize(
             TOKEN_NAME,
             TOKEN_SYMBOL,
             INITIAL_SUPPLY,
             await alice.getAddress(), // vesting contract
             await owner.getAddress(), // governance
-        ]);
-        const ProxyFactory = await hardhat_1.ethers.getContractFactory("ERC1967Proxy");
-        const proxy = await ProxyFactory.deploy(await implementation.getAddress(), initData);
-        await proxy.waitForDeployment();
-        token = await hardhat_1.ethers.getContractAt("HyraToken", await proxy.getAddress());
+            0, // yearStartTime
+            await privilegedMultisig.getAddress() // privilegedMultisigWallet
+        );
     });
     it("HNA-07 Fix: Cross-year execution attribution", async function () {
         console.log("=== HNA-07 Fix: Cross-year Execution Attribution ===");

@@ -97,13 +97,17 @@ describe("HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function () {
       await distributionWallets[5].getAddress()
     );
 
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisigWallet = await deployDistributionWallet(vesting);
+
     await tokenContract.initialize(
       "HYRA Token",
       "HYRA",
       INITIAL_SUPPLY,
       await vesting.getAddress(),
       await deployer.getAddress(),
-      YEAR_START_TIMESTAMP
+      YEAR_START_TIMESTAMP,
+      await privilegedMultisigWallet.getAddress() // privilegedMultisigWallet
     );
 
     const vestingAddress = await vesting.getAddress();
@@ -144,7 +148,8 @@ describe("HYRA DAO - BỘ TEST MINT SCHEDULE VỚI GOVERNANCE", function () {
       VOTING_DELAY,
       VOTING_PERIOD,
       PROPOSAL_THRESHOLD,
-      QUORUM_PERCENTAGE
+      QUORUM_PERCENTAGE,
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet (already deployed above)
     ]);
 
     const governorProxy = await ERC1967Proxy.deploy(await governorImpl.getAddress(), governorInitData);

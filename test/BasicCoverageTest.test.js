@@ -27,17 +27,45 @@ describe("Basic Coverage Test", function () {
         const HyraProxyAdmin = await hardhat_1.ethers.getContractFactory("HyraProxyAdmin");
         const proxyAdmin = await HyraProxyAdmin.deploy(await timelock.getAddress());
         await proxyAdmin.waitForDeployment();
-        const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
+        // Deploy proxy with empty init data first (to set distribution config before initialize)
+        const HyraTransparentUpgradeableProxy = await hardhat_1.ethers.getContractFactory("HyraTransparentUpgradeableProxy");
+        const tokenProxy = await HyraTransparentUpgradeableProxy.deploy(await tokenImplementation.getAddress(), await proxyAdmin.getAddress(), "0x");
+        await tokenProxy.waitForDeployment();
+        const token = HyraToken.attach(await tokenProxy.getAddress());
+
+        // Deploy mock distribution wallets for setDistributionConfig
+        const MockDistributionWallet = await hardhat_1.ethers.getContractFactory("MockDistributionWallet");
+        const distributionWallets = [];
+        for (let i = 0; i < 6; i++) {
+            const wallet = await MockDistributionWallet.deploy(owner.address);
+            await wallet.waitForDeployment();
+            distributionWallets.push(await wallet.getAddress());
+        }
+
+        // Set distribution config BEFORE initialize
+        await token.setDistributionConfig(
+            distributionWallets[0],
+            distributionWallets[1],
+            distributionWallets[2],
+            distributionWallets[3],
+            distributionWallets[4],
+            distributionWallets[5]
+        );
+
+        // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+        const privilegedMultisig = await MockDistributionWallet.deploy(owner.address);
+        await privilegedMultisig.waitForDeployment();
+
+        // Now initialize token
+        await token.initialize(
             "HYRA",
             "HYRA",
             hardhat_1.ethers.parseEther("1000000"),
             alice.address,
-            await timelock.getAddress()
-        ]);
-        const HyraTransparentUpgradeableProxy = await hardhat_1.ethers.getContractFactory("HyraTransparentUpgradeableProxy");
-        const tokenProxy = await HyraTransparentUpgradeableProxy.deploy(await tokenImplementation.getAddress(), await proxyAdmin.getAddress(), tokenInitData);
-        await tokenProxy.waitForDeployment();
-        const token = HyraToken.attach(await tokenProxy.getAddress());
+            await timelock.getAddress(),
+            0, // yearStartTime
+            await privilegedMultisig.getAddress() // privilegedMultisigWallet
+        );
         return {
             timelock,
             proxyAdmin,

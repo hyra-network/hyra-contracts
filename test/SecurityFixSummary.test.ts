@@ -55,29 +55,56 @@ describe("Security Fix Summary - HNA-01 Resolution", function () {
     const tokenImpl = await Token.deploy();
     await tokenImpl.waitForDeployment();
     
-    const tokenInit = Token.interface.encodeFunctionData("initialize", [
-      "HYRA",
-      "HYRA-S",
-      INITIAL_SUPPLY,
-      vestingProxy, // Use vesting contract instead of single holder
-      await ownerAddr.getAddress() // governance
-    ]);
-    
+    // Deploy proxy with empty init data first (to set distribution config before initialize)
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
       await tokenImpl.getAddress(),
       await proxyAdmin.getAddress(),
-      tokenInit,
+      "0x",
       "TOKEN"
     );
     
     await (await proxyDeployer.deployProxy(
       await tokenImpl.getAddress(),
       await proxyAdmin.getAddress(),
-      tokenInit,
+      "0x",
       "TOKEN"
     )).wait();
     
     const tokenContract = await ethers.getContractAt("HyraToken", tokenProxy);
+
+    // Deploy mock distribution wallets for setDistributionConfig
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const distributionWallets = [];
+    for (let i = 0; i < 6; i++) {
+      const wallet = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+      await wallet.waitForDeployment();
+      distributionWallets.push(await wallet.getAddress());
+    }
+
+    // Set distribution config BEFORE initialize
+    await tokenContract.setDistributionConfig(
+      distributionWallets[0],
+      distributionWallets[1],
+      distributionWallets[2],
+      distributionWallets[3],
+      distributionWallets[4],
+      distributionWallets[5]
+    );
+
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisig = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+    await privilegedMultisig.waitForDeployment();
+
+    // Now initialize token with secure initialization (using vesting contract)
+    await tokenContract.initialize(
+      "HYRA",
+      "HYRA-S",
+      INITIAL_SUPPLY,
+      vestingProxy, // Use vesting contract instead of single holder
+      await ownerAddr.getAddress(), // governance
+      0, // yearStartTime
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
+    );
     
     // Initialize vesting contract now that token address is known
     await vestingContract.initialize(tokenProxy, await ownerAddr.getAddress());

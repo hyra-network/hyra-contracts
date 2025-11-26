@@ -68,17 +68,44 @@ describe("🏛️ HYRA DAO - FULL 25 YEARS WITH BURN - ALL EDGE CASES", function
     await tokenImpl.waitForDeployment();
 
     const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-    const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
+    // Deploy proxy with empty init data first (to set distribution config before initialize)
+    const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x");
+    await tokenProxy.waitForDeployment();
+    const tokenContract = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+
+    // Deploy mock distribution wallets for setDistributionConfig
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const distributionWallets = [];
+    for (let i = 0; i < 6; i++) {
+      const wallet = await MockDistributionWallet.deploy(await deployer.getAddress());
+      await wallet.waitForDeployment();
+      distributionWallets.push(await wallet.getAddress());
+    }
+
+    // Set distribution config BEFORE initialize
+    await tokenContract.setDistributionConfig(
+      distributionWallets[0],
+      distributionWallets[1],
+      distributionWallets[2],
+      distributionWallets[3],
+      distributionWallets[4],
+      distributionWallets[5]
+    );
+
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisig = await MockDistributionWallet.deploy(await deployer.getAddress());
+    await privilegedMultisig.waitForDeployment();
+
+    // Now initialize token
+    await tokenContract.initialize(
       "HYRA Token",
       "HYRA",
       INITIAL_SUPPLY,
       await vesting.getAddress(),
-      await deployer.getAddress()
-    ]);
-    
-    const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInitData);
-    await tokenProxy.waitForDeployment();
-    const tokenContract = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+      await deployer.getAddress(),
+      0, // yearStartTime
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
+    );
 
     // Deploy Timelock
     const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
@@ -107,7 +134,8 @@ describe("🏛️ HYRA DAO - FULL 25 YEARS WITH BURN - ALL EDGE CASES", function
       VOTING_DELAY,
       VOTING_PERIOD,
       PROPOSAL_THRESHOLD,
-      QUORUM_PERCENTAGE
+      QUORUM_PERCENTAGE,
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet (already deployed above)
     ]);
 
     const governorProxy = await ERC1967Proxy.deploy(await governorImpl.getAddress(), governorInitData);

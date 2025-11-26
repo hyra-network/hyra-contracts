@@ -23,17 +23,44 @@ describe("Final Security Test - HNA-01 Resolution", function () {
         await proxyAdmin.waitForDeployment();
         // Use a mock vesting address for testing
         const mockVestingAddress = "0x1234567890123456789012345678901234567890";
-        // Deploy token with secure initialization (using vesting contract)
-        const tokenInit = Token.interface.encodeFunctionData("initialize", [
+        // Deploy proxy with empty init data first (to set distribution config before initialize)
+        const tokenProxy = await proxyDeployer.deployProxy.staticCall(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), "0x", "TOKEN");
+        await (await proxyDeployer.deployProxy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), "0x", "TOKEN")).wait();
+        const tokenContract = await hardhat_1.ethers.getContractAt("HyraToken", tokenProxy);
+
+        // Deploy mock distribution wallets for setDistributionConfig
+        const MockDistributionWallet = await hardhat_1.ethers.getContractFactory("MockDistributionWallet");
+        const distributionWallets = [];
+        for (let i = 0; i < 6; i++) {
+            const wallet = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+            await wallet.waitForDeployment();
+            distributionWallets.push(await wallet.getAddress());
+        }
+
+        // Set distribution config BEFORE initialize
+        await tokenContract.setDistributionConfig(
+            distributionWallets[0],
+            distributionWallets[1],
+            distributionWallets[2],
+            distributionWallets[3],
+            distributionWallets[4],
+            distributionWallets[5]
+        );
+
+        // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+        const privilegedMultisig = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+        await privilegedMultisig.waitForDeployment();
+
+        // Now initialize token with secure initialization (using vesting contract)
+        await tokenContract.initialize(
             "HYRA",
             "HYRA-S",
             INITIAL_SUPPLY,
             mockVestingAddress, // Use vesting contract instead of single holder
-            await ownerAddr.getAddress() // governance
-        ]);
-        const tokenProxy = await proxyDeployer.deployProxy.staticCall(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "TOKEN");
-        await (await proxyDeployer.deployProxy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "TOKEN")).wait();
-        const tokenContract = await hardhat_1.ethers.getContractAt("HyraToken", tokenProxy);
+            await ownerAddr.getAddress(), // governance
+            0, // yearStartTime
+            await privilegedMultisig.getAddress() // privilegedMultisigWallet
+        );
         return {
             token: tokenContract,
             owner: ownerAddr,
@@ -71,12 +98,20 @@ describe("Final Security Test - HNA-01 Resolution", function () {
             // Try to initialize with amount exceeding 5% limit
             const excessiveSupply = hardhat_1.ethers.parseEther("2500000001"); // Just over 5%
             const mockVestingAddress = "0x1234567890123456789012345678901234567890";
+            // Note: This test expects revert, so we don't need to set distribution config
+            // But we still need to provide all 7 parameters
+            const MockDistributionWallet = await hardhat_1.ethers.getContractFactory("MockDistributionWallet");
+            const privilegedMultisig = await MockDistributionWallet.deploy(await fixture.owner.getAddress());
+            await privilegedMultisig.waitForDeployment();
+            
             const tokenInit = Token.interface.encodeFunctionData("initialize", [
                 "Test Token",
                 "TEST",
                 excessiveSupply,
                 mockVestingAddress,
-                await fixture.owner.getAddress()
+                await fixture.owner.getAddress(),
+                0, // yearStartTime
+                await privilegedMultisig.getAddress() // privilegedMultisigWallet
             ]);
             await (0, chai_1.expect)(proxyDeployer.deployProxy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), tokenInit, "TOKEN")).to.be.revertedWith("Initial supply exceeds 5% of max supply");
             console.log("Supply limit enforced: Cannot exceed 5% of max supply");

@@ -37,17 +37,45 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
         const HyraTokenFactory = await ethers.getContractFactory("HyraToken");
         const tokenImpl = await HyraTokenFactory.deploy();
         await tokenImpl.waitForDeployment();
-        const tokenInit = HyraTokenFactory.interface.encodeFunctionData("initialize", [
+        // Deploy proxy with empty init data first (to set distribution config before initialize)
+        const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+        const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x");
+        await tokenProxy.waitForDeployment();
+        token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+
+        // Deploy mock distribution wallets for setDistributionConfig
+        const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+        const distributionWallets = [];
+        for (let i = 0; i < 6; i++) {
+            const wallet = await MockDistributionWallet.deploy(await owner.getAddress());
+            await wallet.waitForDeployment();
+            distributionWallets.push(await wallet.getAddress());
+        }
+
+        // Set distribution config BEFORE initialize
+        await token.setDistributionConfig(
+            distributionWallets[0],
+            distributionWallets[1],
+            distributionWallets[2],
+            distributionWallets[3],
+            distributionWallets[4],
+            distributionWallets[5]
+        );
+
+        // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+        const privilegedMultisig = await MockDistributionWallet.deploy(await owner.getAddress());
+        await privilegedMultisig.waitForDeployment();
+
+        // Now initialize token
+        await token.initialize(
             "HYRA",
             "HYRA",
             ethers.parseEther("10000000"),
             await owner.getAddress(), // vesting recipient (for test simplicity)
             await owner.getAddress(), // governance/owner
-        ]);
-        const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-        const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit);
-        await tokenProxy.waitForDeployment();
-        token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+            0, // yearStartTime
+            await privilegedMultisig.getAddress() // privilegedMultisigWallet
+        );
 
         // Deploy HyraTimelock via ERC1967Proxy (initialize)
         const HyraTimelockFactory = await ethers.getContractFactory("HyraTimelock");
@@ -74,6 +102,7 @@ describe("Quorum Voting Fix - Critical Bug Test", function () {
             VOTING_PERIOD,
             PROPOSAL_THRESHOLD,
             QUORUM_PERCENTAGE,
+            await privilegedMultisig.getAddress() // privilegedMultisigWallet (already deployed above)
         ]);
         const govProxy = await ERC1967Proxy.deploy(await govImpl.getAddress(), govInit);
         await govProxy.waitForDeployment();

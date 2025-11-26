@@ -43,13 +43,21 @@ describe("Attack Scenarios Tests", function () {
     const governorImplementation = await HyraGovernor.deploy();
     await governorImplementation.waitForDeployment();
 
+    // Deploy mock distribution wallets for setDistributionConfig
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisig = await MockDistributionWallet.deploy(await owner.getAddress());
+    await privilegedMultisig.waitForDeployment();
+    
     const governorInitData = HyraGovernor.interface.encodeFunctionData("initialize", [
       await tokenImplementation.getAddress(), // placeholder IVotes; not used in attack tests
       await timelock.getAddress(),
       1, // votingDelay (blocks)
       10, // votingPeriod (blocks)
       0, // proposalThreshold
-      10 // quorumPercentage
+      10, // quorumPercentage
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
     ]);
 
     const governorProxy = await ERC1967Proxy.deploy(await governorImplementation.getAddress(), governorInitData);
@@ -57,23 +65,42 @@ describe("Attack Scenarios Tests", function () {
 
     const governor = HyraGovernor.attach(await governorProxy.getAddress());
 
-    const tokenInitData = HyraToken.interface.encodeFunctionData("initialize", [
-      "HYRA",
-      "HYRA",
-      ethers.parseEther("1000000"),
-      await alice.getAddress(), 
-      await timelock.getAddress()
-    ]);
-
+    // Deploy proxy with empty init data first (to set distribution config before initialize)
     const HyraTransparentUpgradeableProxy = await ethers.getContractFactory("HyraTransparentUpgradeableProxy");
     const tokenProxy = await HyraTransparentUpgradeableProxy.deploy(
       await tokenImplementation.getAddress(),
       await proxyAdmin.getAddress(),
-      tokenInitData
+      "0x"
     );
     await tokenProxy.waitForDeployment();
-
     const token = HyraToken.attach(await tokenProxy.getAddress());
+    const distributionWallets = [];
+    for (let i = 0; i < 6; i++) {
+      const wallet = await MockDistributionWallet.deploy(await owner.getAddress());
+      await wallet.waitForDeployment();
+      distributionWallets.push(await wallet.getAddress());
+    }
+
+    // Set distribution config BEFORE initialize
+    await token.setDistributionConfig(
+      distributionWallets[0],
+      distributionWallets[1],
+      distributionWallets[2],
+      distributionWallets[3],
+      distributionWallets[4],
+      distributionWallets[5]
+    );
+
+    // Now initialize token (privilegedMultisig already deployed above)
+    await token.initialize(
+      "HYRA",
+      "HYRA",
+      ethers.parseEther("1000000"),
+      await alice.getAddress(), 
+      await timelock.getAddress(),
+      0, // yearStartTime
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
+    );
 
     return {
       timelock,

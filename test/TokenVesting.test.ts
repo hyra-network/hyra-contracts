@@ -35,29 +35,56 @@ describe("TokenVesting", function () {
     const proxyAdmin = await ProxyAdmin.deploy(await ownerAddr.getAddress());
     await proxyAdmin.waitForDeployment();
     
-    const tokenInit = Token.interface.encodeFunctionData("initialize", [
-      "Test Token",
-      "TEST",
-      INITIAL_SUPPLY,
-      await deployer.getAddress(), // initial holder
-      await ownerAddr.getAddress() // governance
-    ]);
-    
+    // Deploy proxy with empty init data first (to set distribution config before initialize)
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
       await tokenImpl.getAddress(),
       await proxyAdmin.getAddress(),
-      tokenInit,
+      "0x",
       "TEST"
     );
     
     await (await proxyDeployer.deployProxy(
       await tokenImpl.getAddress(),
       await proxyAdmin.getAddress(),
-      tokenInit,
+      "0x",
       "TEST"
     )).wait();
     
     const tokenContract = await ethers.getContractAt("HyraToken", tokenProxy);
+
+    // Deploy mock distribution wallets for setDistributionConfig
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const distributionWallets = [];
+    for (let i = 0; i < 6; i++) {
+      const wallet = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+      await wallet.waitForDeployment();
+      distributionWallets.push(await wallet.getAddress());
+    }
+
+    // Set distribution config BEFORE initialize
+    await tokenContract.setDistributionConfig(
+      distributionWallets[0],
+      distributionWallets[1],
+      distributionWallets[2],
+      distributionWallets[3],
+      distributionWallets[4],
+      distributionWallets[5]
+    );
+
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisig = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+    await privilegedMultisig.waitForDeployment();
+
+    // Now initialize token
+    await tokenContract.initialize(
+      "Test Token",
+      "TEST",
+      INITIAL_SUPPLY,
+      await deployer.getAddress(), // initial holder
+      await ownerAddr.getAddress(), // governance
+      0, // yearStartTime
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
+    );
     
     // Deploy TokenVesting
     const TokenVesting = await ethers.getContractFactory("TokenVesting");

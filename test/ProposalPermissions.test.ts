@@ -91,6 +91,11 @@ describe("Proposal Permissions Tests", function () {
       await distributionWallets[5].getAddress()
     );
 
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const privilegedMultisig = await MockDistributionWallet.deploy(deployer.address);
+    await privilegedMultisig.waitForDeployment();
+
     // Initialize token
     await tokenContract.initialize(
       "HYRA Token",
@@ -98,7 +103,8 @@ describe("Proposal Permissions Tests", function () {
       INITIAL_SUPPLY_TEST,
       vesting.address,
       deployer.address,
-      0
+      0,
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
     );
 
     // 2. Deploy Timelock

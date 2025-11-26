@@ -35,9 +35,39 @@ describe("HNA-02: Centralized Control Of Contract Upgrade Security Test", functi
         const HyraProxy = await hardhat_1.ethers.getContractFactory("HyraTransparentUpgradeableProxy");
         const tokenProxy = await HyraProxy.deploy(await tokenImpl.getAddress(), await proxyAdmin.getAddress(), "0x");
         token = HyraToken.attach(await tokenProxy.getAddress());
+
+        // Deploy mock distribution wallets for setDistributionConfig
+        const MockDistributionWallet = await hardhat_1.ethers.getContractFactory("MockDistributionWallet");
+        const distributionWallets = [];
+        for (let i = 0; i < 6; i++) {
+            const wallet = await MockDistributionWallet.deploy(await owner.getAddress());
+            await wallet.waitForDeployment();
+            distributionWallets.push(await wallet.getAddress());
+        }
+
+        // Set distribution config BEFORE initialize
+        await token.setDistributionConfig(
+            distributionWallets[0],
+            distributionWallets[1],
+            distributionWallets[2],
+            distributionWallets[3],
+            distributionWallets[4],
+            distributionWallets[5]
+        );
+
+        // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+        const privilegedMultisig = await MockDistributionWallet.deploy(await owner.getAddress());
+        await privilegedMultisig.waitForDeployment();
+
         // Initialize token
-        await token.initialize("HYRA", "HYRA", hardhat_1.ethers.parseEther("1000000"), await owner.getAddress(), // Mock vesting contract (placeholder)
-        await owner.getAddress() // Owner is test owner
+        await token.initialize(
+            "HYRA",
+            "HYRA",
+            hardhat_1.ethers.parseEther("1000000"),
+            await owner.getAddress(), // Mock vesting contract (placeholder)
+            await owner.getAddress(), // Owner is test owner
+            0, // yearStartTime
+            await privilegedMultisig.getAddress() // privilegedMultisigWallet
         );
         // 4. Add proxy to management
         await proxyAdmin.connect(owner).addProxy(await token.getAddress(), "HyraToken");

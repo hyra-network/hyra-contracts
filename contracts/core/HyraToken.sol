@@ -11,6 +11,7 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "../interfaces/IHyraToken.sol";
+import "../interfaces/ITokenMintFeed.sol";
 
 /**
  * @title HyraToken
@@ -86,8 +87,12 @@ contract HyraToken is
     DistributionConfig public distributionConfig;
     bool public configSet;  // Immutable flag - can only set once
     
-    // Storage gap for upgradeability (reduced by 1 slot for distribution config)
-    uint256[38] private __gap;
+    // ============ Oracle Integration ============
+    address public tokenMintFeed;  // TokenMintFeed oracle contract address
+    address public privilegedMultisigWallet;  // Privileged multisig wallet (set in initialize, no setter)
+    
+    // Storage gap for upgradeability (reduced by 2 slots for tokenMintFeed and privilegedMultisigWallet)
+    uint256[36] private __gap;
 
     // ============ Events ============
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
@@ -122,6 +127,9 @@ contract HyraToken is
         uint256 strategicAdvisors,
         uint256 seedStrategicVC
     );
+    
+    // Oracle events
+    event TokenMintFeedUpdated(address indexed oldFeed, address indexed newFeed);
 
     // ============ Errors ============
     error ZeroAddress();
@@ -141,12 +149,27 @@ contract HyraToken is
     error ConfigNotSet();
     error DuplicateAddress();
     error NotContract();
+    error NotPrivilegedMultisig();
+    error PrivilegedMultisigWalletNotSet();
+    error OracleNotSet();
+    error InvalidOracleRequestId();
+    error OracleDataNotFinalized();
+    error InvalidOracleAmount();
+    error OracleRequestNotFound();
 
     // ============ Modifiers ============
     // Removed onlyMinter modifier along with minter role logic
 
     modifier validAddress(address _addr) {
         if (_addr == address(0)) revert ZeroAddress();
+        _;
+    }
+    
+    modifier onlyPrivilegedMultisig() {
+        // privilegedMultisigWallet được set trong initialize(), không thể zero nếu đã deploy đúng
+        // Nhưng vẫn check để đảm bảo an toàn
+        if (privilegedMultisigWallet == address(0)) revert PrivilegedMultisigWalletNotSet();
+        if (msg.sender != privilegedMultisigWallet) revert NotPrivilegedMultisig();
         _;
     }
 
@@ -163,6 +186,7 @@ contract HyraToken is
      * @param _vestingContract Address of the vesting contract for secure distribution
      * @param _governance Initial governance address
      * @param _yearStartTime Unix timestamp for Year 1 start (0 = use block.timestamp). Example: 1735689600 = Jan 1, 2025 00:00:00 UTC
+     * @param _privilegedMultisigWallet Address of privileged multisig wallet (from .env, set once, no setter)
      */
     function initialize(
         string memory _name,
@@ -170,7 +194,8 @@ contract HyraToken is
         uint256 _initialSupply,
         address _vestingContract,
         address _governance,
-        uint256 _yearStartTime
+        uint256 _yearStartTime,
+        address _privilegedMultisigWallet
     ) public initializer validAddress(_vestingContract) validAddress(_governance) {
         __ERC20_init(_name, _symbol);
         __ERC20Burnable_init();
@@ -204,6 +229,20 @@ contract HyraToken is
         currentMintYear = 1;
         mintYearStartTime = YEAR_2025_START;
         originalMintYearStartTime = YEAR_2025_START;
+        
+        // Set privilegedMultisigWallet (set một lần duy nhất trong initialize, không có setter)
+        // Validate: không được zero (bắt buộc phải set)
+        if (_privilegedMultisigWallet == address(0)) revert ZeroAddress();
+        
+        // Validate: phải là contract address (multisig wallet)
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(_privilegedMultisigWallet)
+        }
+        if (codeSize == 0) revert NotContract();
+        
+        // Set privilegedMultisigWallet (chỉ set một lần trong initialize)
+        privilegedMultisigWallet = _privilegedMultisigWallet;
     }
     
     // Legacy initializer removed to eliminate single-holder initial distribution path
@@ -291,20 +330,76 @@ contract HyraToken is
         );
     }
 
+    // ============ Oracle Integration Functions ============
+    
+    /**
+     * @notice Set TokenMintFeed oracle address (only privileged multisig wallet)
+     * @param _tokenMintFeed Address of TokenMintFeed contract
+     */
+    function setTokenMintFeed(address _tokenMintFeed) external onlyPrivilegedMultisig {
+        if (_tokenMintFeed == address(0)) revert ZeroAddress();
+        
+        // Validate: phải là contract address
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(_tokenMintFeed)
+        }
+        if (codeSize == 0) revert NotContract();
+        
+        address oldFeed = tokenMintFeed;
+        tokenMintFeed = _tokenMintFeed;
+        
+        emit TokenMintFeedUpdated(oldFeed, _tokenMintFeed);
+    }
+    
+    /**
+     * @notice Get mint amount from oracle
+     * @param _oracleRequestId Oracle request ID
+     * @return tokensToMint Amount of tokens to mint from oracle
+     */
+    function _getMintAmountFromOracle(uint256 _oracleRequestId) internal view returns (uint256 tokensToMint) {
+        // Validate tokenMintFeed is set
+        if (tokenMintFeed == address(0)) revert OracleNotSet();
+        
+        // Call oracle to get mint data
+        try ITokenMintFeed(tokenMintFeed).getLatestMintData(_oracleRequestId) returns (
+            uint256,
+            uint256,
+            uint256 _tokensToMint,
+            uint64,
+            bool _finalized
+        ) {
+            // Validate finalized = true
+            if (!_finalized) revert OracleDataNotFinalized();
+            
+            // Validate tokensToMint > 0
+            if (_tokensToMint == 0) revert InvalidOracleAmount();
+            
+            return _tokensToMint;
+        } catch {
+            // Oracle revert (e.g., requestId không tồn tại)
+            revert OracleRequestNotFound();
+        }
+    }
+
     // ============ Minting Functions ============
 
     /**
      * @notice Create a mint request (only owner/timelock can call)
-     * @param _recipient Address to receive tokens
-     * @param _amount Amount to mint
+     * @param _recipient Address to receive tokens (for reference, tokens are distributed to 6 multisig wallets)
+     * @param _oracleRequestId Oracle request ID (required, amount will be fetched from oracle)
      * @param _purpose Purpose of minting (for transparency)
      */
     function createMintRequest(
         address _recipient,
-        uint256 _amount,
+        uint256 _oracleRequestId,
         string memory _purpose
     ) external onlyOwner validAddress(_recipient) returns (uint256 requestId) {
-        if (_amount == 0) revert InvalidAmount();
+        // Validate _oracleRequestId > 0
+        if (_oracleRequestId == 0) revert InvalidOracleRequestId();
+        
+        // Get amount from oracle
+        uint256 _amount = _getMintAmountFromOracle(_oracleRequestId);
         
         // CALENDAR YEAR VALIDATION: Check if we're in the mint period (2025-2049)
         // 31/12/2049 23:59:59 UTC = 2524607999

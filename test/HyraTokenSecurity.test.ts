@@ -57,30 +57,56 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
     
     const vestingContract = await ethers.getContractAt("MockVestingContract", vestingProxy);
     
-    // Deploy token with vesting contract
-    const tokenInit = Token.interface.encodeFunctionData("initialize", [
-      "HYRA",
-      "HYRA",
-      INITIAL_SUPPLY,
-      vestingProxy, // Use vesting contract instead of single holder
-      await ownerAddr.getAddress() // governance
-    ]);
-    
+    // Deploy proxy with empty init data first (to set distribution config before initialize)
     const tokenProxy = await proxyDeployer.deployProxy.staticCall(
       await tokenImpl.getAddress(),
       await proxyAdmin.getAddress(),
-      tokenInit,
+      "0x",
       "TOKEN"
     );
     
     await (await proxyDeployer.deployProxy(
       await tokenImpl.getAddress(),
       await proxyAdmin.getAddress(),
-      tokenInit,
+      "0x",
       "TOKEN"
     )).wait();
     
     const tokenContract = await ethers.getContractAt("HyraToken", tokenProxy);
+
+    // Deploy mock distribution wallets for setDistributionConfig
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const distributionWallets = [];
+    for (let i = 0; i < 6; i++) {
+      const wallet = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+      await wallet.waitForDeployment();
+      distributionWallets.push(await wallet.getAddress());
+    }
+
+    // Set distribution config BEFORE initialize
+    await tokenContract.setDistributionConfig(
+      distributionWallets[0],
+      distributionWallets[1],
+      distributionWallets[2],
+      distributionWallets[3],
+      distributionWallets[4],
+      distributionWallets[5]
+    );
+
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const privilegedMultisig = await MockDistributionWallet.deploy(await ownerAddr.getAddress());
+    await privilegedMultisig.waitForDeployment();
+
+    // Now initialize token with vesting contract
+    await tokenContract.initialize(
+      "HYRA",
+      "HYRA",
+      INITIAL_SUPPLY,
+      vestingProxy, // Use vesting contract instead of single holder
+      await ownerAddr.getAddress(), // governance
+      0, // yearStartTime
+      await privilegedMultisig.getAddress() // privilegedMultisigWallet
+    );
     
     return {
       token: tokenContract,
@@ -167,12 +193,20 @@ describe("HyraToken Security Fixes (HNA-01)", function () {
       // Try to initialize with amount exceeding 5% limit
       const excessiveSupply = ethers.parseEther("2500000001"); // Just over 5%
       
+      // Note: This test expects revert, so we don't need to set distribution config
+      // But we still need to provide all 7 parameters
+      const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+      const privilegedMultisig = await MockDistributionWallet.deploy(await owner.getAddress());
+      await privilegedMultisig.waitForDeployment();
+      
       const tokenInit = Token.interface.encodeFunctionData("initialize", [
         "Test Token",
         "TEST",
         excessiveSupply,
         vestingProxy,
-        await owner.getAddress()
+        await owner.getAddress(),
+        0, // yearStartTime
+        await privilegedMultisig.getAddress() // privilegedMultisigWallet
       ]);
       
       await expect(

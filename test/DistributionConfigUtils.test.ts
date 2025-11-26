@@ -114,8 +114,13 @@ describe("DistributionConfig utilities", function () {
       addresses.seedStrategicVC
     );
 
+    // Deploy mock contract for privilegedMultisigWallet (must be contract, not EOA)
+    const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+    const privilegedMultisig = await MockDistributionWallet.deploy(ownerEOA);
+    await privilegedMultisig.waitForDeployment();
+
     const initialSupply = ethers.parseEther("1000");
-    await token.initialize("HYRA", "HYRA", initialSupply, addresses.communityEcosystem, ownerEOA, 0);
+    await token.initialize("HYRA", "HYRA", initialSupply, addresses.communityEcosystem, ownerEOA, 0, await privilegedMultisig.getAddress());
 
     await expect(verifyDistributionBalances(token, addresses, initialSupply)).to.be.fulfilled;
     await expect(
