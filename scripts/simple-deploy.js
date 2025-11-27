@@ -51,10 +51,12 @@ async function simpleDeploy() {
         const proxyAdminValidator = await ProxyAdminValidatorFactory.deploy();
         console.log(`   ProxyAdminValidator deployed at: ${await proxyAdminValidator.getAddress()}`);
         // 9. Deploy HyraDAOInitializer
-        console.log("9. Deploying HyraDAOInitializer...");
-        const HyraDAOInitializerFactory = await hardhat_1.ethers.getContractFactory("HyraDAOInitializer");
-        const daoInitializer = await HyraDAOInitializerFactory.deploy();
-        console.log(`   HyraDAOInitializer deployed at: ${await daoInitializer.getAddress()}`);
+        // NOTE: HyraDAOInitializer contract has been moved to backup
+        // console.log("9. Deploying HyraDAOInitializer...");
+        // const HyraDAOInitializerFactory = await hardhat_1.ethers.getContractFactory("HyraDAOInitializer");
+        // const daoInitializer = await HyraDAOInitializerFactory.deploy();
+        // console.log(`   HyraDAOInitializer deployed at: ${await daoInitializer.getAddress()}`);
+        const daoInitializer = null; // Contract moved to backup
         console.log("\n DEPLOYMENT SUMMARY");
         console.log("=".repeat(50));
         console.log(`Token: ${await token.getAddress()}`);
@@ -65,7 +67,7 @@ async function simpleDeploy() {
         console.log(`Vesting: ${await vesting.getAddress()}`);
         console.log(`ExecutorManager: ${await executorManager.getAddress()}`);
         console.log(`ProxyAdminValidator: ${await proxyAdminValidator.getAddress()}`);
-        console.log(`DAOInitializer: ${await daoInitializer.getAddress()}`);
+        // console.log(`DAOInitializer: ${await daoInitializer.getAddress()}`); // Contract moved to backup
         console.log("\ All contracts deployed successfully!");
         // Test basic functionality
         console.log("\n Testing basic functionality...");
@@ -111,8 +113,8 @@ async function simpleDeploy() {
                 proxyDeployer: await proxyDeployer.getAddress(),
                 vesting: await vesting.getAddress(),
                 executorManager: await executorManager.getAddress(),
-                proxyAdminValidator: await proxyAdminValidator.getAddress(),
-                daoInitializer: await daoInitializer.getAddress()
+                proxyAdminValidator: await proxyAdminValidator.getAddress()
+                // daoInitializer: await daoInitializer.getAddress() // Contract moved to backup
             }
         };
         const fs = require("fs");

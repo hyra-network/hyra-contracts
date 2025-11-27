@@ -99,11 +99,11 @@ async function verifyContracts() {
     const config: VerificationConfig = {
       network,
       contracts: [
-        {
-          name: "HyraDAOInitializer",
-          address: deploymentInfo.daoInitializer,
-          constructorArgs: []
-        },
+        // {
+        //   name: "HyraDAOInitializer",
+        //   address: deploymentInfo.daoInitializer,
+        //   constructorArgs: []
+        // }, // Contract moved to backup
         {
           name: "HyraToken",
           address: deploymentInfo.result.tokenProxy,

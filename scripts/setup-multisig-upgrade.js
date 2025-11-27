@@ -76,10 +76,13 @@ class MultiSigUpgradeSetup {
         console.log("Deploying DAO with Multi-Signature Upgrade Security...");
         const daoConfig = await this.createSecureDAOConfig(multisigAddress);
         // Deploy DAO Initializer
-        const DAOInitializer = await hardhat_1.ethers.getContractFactory("HyraDAOInitializer");
-        const daoInitializer = await DAOInitializer.deploy();
-        console.log("Deploying DAO...");
-        const deploymentResult = await daoInitializer.deployDAO(daoConfig);
+        // NOTE: HyraDAOInitializer contract has been moved to backup
+        // const DAOInitializer = await hardhat_1.ethers.getContractFactory("HyraDAOInitializer");
+        // const daoInitializer = await DAOInitializer.deploy();
+        // console.log("Deploying DAO...");
+        // const deploymentResult = await daoInitializer.deployDAO(daoConfig);
+        
+        throw new Error("HyraDAOInitializer contract has been moved to backup. Please use alternative deployment method.");
         console.log("DAO deployed successfully!");
         console.log(`Token Proxy: ${deploymentResult.tokenProxy}`);
         console.log(`Timelock Proxy: ${deploymentResult.timelockProxy}`);

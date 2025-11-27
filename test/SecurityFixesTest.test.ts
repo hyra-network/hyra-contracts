@@ -6,8 +6,8 @@ import {
   HyraTimelock, 
   HyraToken, 
   SecureProxyAdmin,
-  HyraProxyDeployer,
-  HyraDAOInitializer
+  HyraProxyDeployer
+  // HyraDAOInitializer // Contract moved to backup
 } from "../typechain-types";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 

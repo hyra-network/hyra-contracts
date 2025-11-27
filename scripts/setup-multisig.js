@@ -79,10 +79,13 @@ class SecureTokenDistributionSetup {
             vestingConfig: vestingConfig
         };
         // Deploy DAO
-        const DAOInitializer = await hardhat_1.ethers.getContractFactory("HyraDAOInitializer");
-        const daoInitializer = await DAOInitializer.deploy();
-        console.log("Deploying DAO...");
-        const deploymentResult = await daoInitializer.deployDAO(daoConfig);
+        // NOTE: HyraDAOInitializer contract has been moved to backup
+        // const DAOInitializer = await hardhat_1.ethers.getContractFactory("HyraDAOInitializer");
+        // const daoInitializer = await DAOInitializer.deploy();
+        // console.log("Deploying DAO...");
+        // const deploymentResult = await daoInitializer.deployDAO(daoConfig);
+        
+        throw new Error("HyraDAOInitializer contract has been moved to backup. Please use alternative deployment method.");
         console.log("DAO deployed successfully!");
         console.log(`Token Proxy: ${deploymentResult.tokenProxy}`);
         console.log(`Timelock Proxy: ${deploymentResult.timelockProxy}`);
