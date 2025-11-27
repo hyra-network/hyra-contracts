@@ -64,6 +64,7 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
     );
     event EmergencyUpgradeScheduled(address indexed proxy, address indexed implementation);
     event OperationExecuted(bytes32 indexed id, uint256 index, address target, uint256 value);
+    event UpgradeExpiredCleaned(address indexed proxy, address indexed expiredImplementation);
 
     // ============ Errors ============
     error InvalidProxy();
@@ -372,5 +373,22 @@ contract HyraTimelock is Initializable, ReentrancyGuardUpgradeable, TimelockCont
         isReady = isScheduled && 
                   block.timestamp >= executeTime && 
                   block.timestamp <= executeTime + 48 hours;
+    }
+
+    /**
+     * @notice Cleanup expired upgrades (can be called by anyone)
+     * @param proxy Address of the proxy
+     * @dev This allows anyone to clean up expired upgrades that were not executed within 48 hours
+     */
+    function cleanupExpiredUpgrade(address proxy) external {
+        if (pendingUpgrades[proxy] != 0) {
+            if (block.timestamp > pendingUpgrades[proxy] + 48 hours) {
+                // Clear expired upgrade
+                address expiredImplementation = pendingImplementations[proxy];
+                pendingUpgrades[proxy] = 0;
+                pendingImplementations[proxy] = address(0);
+                emit UpgradeExpiredCleaned(proxy, expiredImplementation);
+            }
+        }
     }
 }
