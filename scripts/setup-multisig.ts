@@ -92,7 +92,7 @@ export class SecureTokenDistributionSetup {
     // DAO configuration
     const daoConfig = {
       // Token config
-      tokenName: "Hyra Token",
+      tokenName: "HYRA",
       tokenSymbol: "HYRA",
       initialSupply: ethers.parseEther("2500000000"), // 2.5B tokens
       vestingContract: multisigAddress, // Will be replaced with vesting contract
@@ -118,19 +118,22 @@ export class SecureTokenDistributionSetup {
     };
     
     // Deploy DAO
-    const DAOInitializer = await ethers.getContractFactory("HyraDAOInitializer");
-    const daoInitializer = await DAOInitializer.deploy();
+    // NOTE: HyraDAOInitializer contract has been moved to backup
+    // const DAOInitializer = await ethers.getContractFactory("HyraDAOInitializer");
+    // const daoInitializer = await DAOInitializer.deploy();
+    // 
+    // console.log("Deploying DAO...");
+    // const deploymentResult = await daoInitializer.deployDAO(daoConfig);
     
-    console.log("Deploying DAO...");
-    const deploymentResult = await daoInitializer.deployDAO(daoConfig);
+    throw new Error("HyraDAOInitializer contract has been moved to backup. Please use alternative deployment method.");
     
-    console.log("DAO deployed successfully!");
-    console.log(`Token Proxy: ${deploymentResult.tokenProxy}`);
-    console.log(`Timelock Proxy: ${deploymentResult.timelockProxy}`);
-    console.log(`Governor Proxy: ${deploymentResult.governorProxy}`);
-    console.log(`Vesting Proxy: ${deploymentResult.vestingProxy}`);
-    
-    return deploymentResult;
+    // Code below is unreachable but kept for reference
+    // console.log("DAO deployed successfully!");
+    // console.log(`Token Proxy: ${deploymentResult.tokenProxy}`);
+    // console.log(`Timelock Proxy: ${deploymentResult.timelockProxy}`);
+    // console.log(`Governor Proxy: ${deploymentResult.governorProxy}`);
+    // console.log(`Vesting Proxy: ${deploymentResult.vestingProxy}`);
+    // return deploymentResult;
   }
 
   /**
@@ -203,6 +206,7 @@ export const MockMultisigFactory = {
 
 // Main script to run setup
 export async function main() {
+  const hre = require("hardhat");
   const setup = new SecureTokenDistributionSetup(hre);
   
   // Configure multisig wallet

@@ -21,15 +21,27 @@ async function main() {
 	const SecureExecutorManager = await ethers.getContractFactory("SecureExecutorManager");
 	const execMgr = await SecureExecutorManager.deploy();
 	await execMgr.waitForDeployment();
-	await (await execMgr.initialize(await deployer.getAddress(), [await deployer.getAddress()])).wait();
-	console.log(`SecureExecutorManager: ${await execMgr.getAddress()}`);
+	try {
+		await (
+			await execMgr.initialize(await deployer.getAddress(), [await deployer.getAddress()], { gasLimit: 2_000_000 })
+		).wait();
+		console.log(`SecureExecutorManager: ${await execMgr.getAddress()}`);
+	} catch (e) {
+		console.error("SecureExecutorManager.initialize failed, saving address without init:", e);
+		console.log(`SecureExecutorManager: ${await execMgr.getAddress()}`);
+	}
 
 	// ProxyAdminValidator (initialize)
 	const ProxyAdminValidator = await ethers.getContractFactory("ProxyAdminValidator");
 	const pav = await ProxyAdminValidator.deploy();
 	await pav.waitForDeployment();
-	await (await pav.initialize(await deployer.getAddress())).wait();
-	console.log(`ProxyAdminValidator: ${await pav.getAddress()}`);
+	try {
+		await (await pav.initialize(await deployer.getAddress(), { gasLimit: 1_000_000 })).wait();
+		console.log(`ProxyAdminValidator: ${await pav.getAddress()}`);
+	} catch (e) {
+		console.error("ProxyAdminValidator.initialize failed, saving address without init:", e);
+		console.log(`ProxyAdminValidator: ${await pav.getAddress()}`);
+	}
 
 	// Save
 	const fs = require("fs");

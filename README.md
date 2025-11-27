@@ -13,7 +13,7 @@ Built with **Hardhat** and **OpenZeppelin** upgradeable libraries, it empowers c
 
 ---
 
-## **Hyra Token**
+## **HYRA Token**
 The heart of the ecosystem - **HyraToken** - is a governance-ready, upgradeable ERC20 with built-in safeguards:
 
 - **2.5B HYRA** initial supply at launch.  
@@ -51,6 +51,22 @@ npx hardhat test
 ---
 
 ## ** Development & Deployment**
+
+### Environment Variables
+Before deploying, create a `.env` or `.env.prod` file with the required configuration. See [ENV_TEMPLATE.md](./ENV_TEMPLATE.md) for the complete template.
+
+**Required Variables:**
+- `PRIVILEGED_MULTISIG_WALLET` - Privileged multisig wallet that can create UPGRADE, CONSTITUTIONAL, EMERGENCY, MINT REQUEST proposals and can be used for other privileged operations like tokenMintFeed (must be a contract address)
+- `COMMUNITY_ECOSYSTEM_WALLET` - Distribution wallet (60%)
+- `LIQUIDITY_BUYBACK_RESERVE_WALLET` - Distribution wallet (12%)
+- `MARKETING_PARTNERSHIPS_WALLET` - Distribution wallet (10%)
+- `TEAM_FOUNDERS_WALLET` - Distribution wallet (8%)
+- `STRATEGIC_ADVISORS_WALLET` - Distribution wallet (5%)
+- `SEED_STRATEGIC_VC_WALLET` - Distribution wallet (5%)
+- `SAFE_ADDRESS` - Safe Multisig Wallet for governance
+
+**Important:** All wallet addresses must be contract addresses (multisig wallets), not EOA addresses.
+
 Run local node:
 ```shell
 npx hardhat node
@@ -58,7 +74,7 @@ npx hardhat node
 
 Deploy:
 ```shell
-npx hardhat run scripts/deploy.ts --network localhost
+npx hardhat run scripts/deploy-core-sepolia.ts --network sepolia
 ```
 
 ---

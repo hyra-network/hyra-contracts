@@ -28,4 +28,7 @@ interface IHyraTimelock {
     function isUpgradeReady(address proxy) external view returns (bool);
     function pendingUpgrades(address proxy) external view returns (uint256);
     function pendingImplementations(address proxy) external view returns (address);
+    
+    // Cleanup function
+    function cleanupExpiredUpgrade(address proxy) external;
 }

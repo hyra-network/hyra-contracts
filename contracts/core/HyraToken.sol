@@ -11,6 +11,7 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "../interfaces/IHyraToken.sol";
+import "../interfaces/ITokenMintFeed.sol";
 
 /**
  * @title HyraToken
@@ -37,10 +38,14 @@ contract HyraToken is
     uint256 public constant TIER3_ANNUAL_CAP = 750_000_000e18;    // 750M per year (1.5% of 50B)
     
     // Time periods 
-    uint256 public constant TIER1_END_YEAR = 10;  // Year 1-10
-    uint256 public constant TIER2_END_YEAR = 15;  // Year 11-15
-    uint256 public constant TIER3_END_YEAR = 25;  // Year 16-25
+    uint256 public constant TIER1_END_YEAR = 10;  // Year 1-10 (2025-2034)
+    uint256 public constant TIER2_END_YEAR = 15;  // Year 11-15 (2035-2039)
+    uint256 public constant TIER3_END_YEAR = 25;  // Year 16-25 (2040-2049)
     uint256 public constant YEAR_DURATION = 365 days;
+    
+    // Calendar year constants - Hardcoded to ensure Year 1 = 2025, Year 25 = 2049
+    // 01/01/2025 00:00:00 UTC - Mint period starts regardless of deploy time
+    uint256 public constant YEAR_2025_START = 1735689600;
     
     // ============ State Variables ============
     // Removed unused governanceAddress - using owner() instead
@@ -61,14 +66,33 @@ contract HyraToken is
         uint256 approvedAt;
         bool executed;
         string purpose;
+        uint256 yearCreated; // Track which year this request was created for
     }
     
     mapping(uint256 => MintRequest) public mintRequests;
     uint256 public mintRequestCount;
     uint256 public constant MINT_EXECUTION_DELAY = 2 days;
     
-    // Storage gap for upgradeability
-    uint256[39] private __gap;
+    // ============ Token Distribution Configuration ============
+    // Distribution to 6 multisig wallets with fixed percentages
+    struct DistributionConfig {
+        address communityEcosystem;      // 60%
+        address liquidityBuybackReserve;  // 12%
+        address marketingPartnerships;    // 10%
+        address teamFounders;             // 8%
+        address strategicAdvisors;       // 5%
+        address seedStrategicVC;          // 5%
+    }
+    
+    DistributionConfig public distributionConfig;
+    bool public configSet;  // Immutable flag - can only set once
+    
+    // ============ Oracle Integration ============
+    address public tokenMintFeed;  // TokenMintFeed oracle contract address
+    address public privilegedMultisigWallet;  // Privileged multisig wallet (set in initialize, no setter)
+    
+    // Storage gap for upgradeability (reduced by 2 slots for tokenMintFeed and privilegedMultisigWallet)
+    uint256[36] private __gap;
 
     // ============ Events ============
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
@@ -83,12 +107,36 @@ contract HyraToken is
     event InitialDistribution(address indexed holder, uint256 amount, uint256 timestamp);
     event TokensPaused(address indexed by);
     event TokensUnpaused(address indexed by);
+    
+    // Distribution events
+    event DistributionConfigSet(
+        address indexed communityEcosystem,
+        address indexed liquidityBuybackReserve,
+        address indexed marketingPartnerships,
+        address teamFounders,
+        address strategicAdvisors,
+        address seedStrategicVC
+    );
+    
+    event TokensDistributed(
+        uint256 totalAmount,
+        uint256 communityEcosystem,
+        uint256 liquidityBuybackReserve,
+        uint256 marketingPartnerships,
+        uint256 teamFounders,
+        uint256 strategicAdvisors,
+        uint256 seedStrategicVC
+    );
+    
+    // Oracle events
+    event TokenMintFeedUpdated(address indexed oldFeed, address indexed newFeed);
 
     // ============ Errors ============
     error ZeroAddress();
     error ExceedsAnnualMintCap(uint256 requested, uint256 available);
     error ExceedsMaxSupply(uint256 resultingSupply, uint256 maxSupply);
     error MintingPeriodEnded();
+    error MintingPeriodNotStarted(); // NEW: Before 01/01/2025
     error InsufficientMintAllowance(uint256 requested, uint256 available);
     error NotMinter();
     error AlreadyMinter();
@@ -97,12 +145,31 @@ contract HyraToken is
     error MintDelayNotMet();
     error DirectMintDisabled();
     error RequestExpired();
+    error ConfigAlreadySet();
+    error ConfigNotSet();
+    error DuplicateAddress();
+    error NotContract();
+    error NotPrivilegedMultisig();
+    error PrivilegedMultisigWalletNotSet();
+    error OracleNotSet();
+    error InvalidOracleRequestId();
+    error OracleDataNotFinalized();
+    error InvalidOracleAmount();
+    error OracleRequestNotFound();
 
     // ============ Modifiers ============
     // Removed onlyMinter modifier along with minter role logic
 
     modifier validAddress(address _addr) {
         if (_addr == address(0)) revert ZeroAddress();
+        _;
+    }
+    
+    modifier onlyPrivilegedMultisig() {
+        // privilegedMultisigWallet được set trong initialize(), không thể zero nếu đã deploy đúng
+        // Nhưng vẫn check để đảm bảo an toàn
+        if (privilegedMultisigWallet == address(0)) revert PrivilegedMultisigWalletNotSet();
+        if (msg.sender != privilegedMultisigWallet) revert NotPrivilegedMultisig();
         _;
     }
 
@@ -118,13 +185,15 @@ contract HyraToken is
      * @param _initialSupply Initial token supply
      * @param _vestingContract Address of the vesting contract for secure distribution
      * @param _governance Initial governance address
+     * @param _privilegedMultisigWallet Address of privileged multisig wallet (from .env, set once, no setter)
      */
     function initialize(
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply,
         address _vestingContract,
-        address _governance
+        address _governance,
+        address _privilegedMultisigWallet
     ) public initializer validAddress(_vestingContract) validAddress(_governance) {
         __ERC20_init(_name, _symbol);
         __ERC20Burnable_init();
@@ -138,40 +207,204 @@ contract HyraToken is
         require(_initialSupply <= 2_500_000_000e18, "Initial supply exceeds 5% of max supply");
         
         if (_initialSupply > 0) {
-            // Mint to vesting contract instead of single holder for security
-            _mint(_vestingContract, _initialSupply);
+            // Distribution config must be set before initialize
+            if (!configSet) revert ConfigNotSet();
+            
+            // Distribute initial supply to 6 multisig wallets
+            _distributeTokens(_initialSupply);
+            
             totalMintedSupply = _initialSupply;
             
             // Track initial supply in year 1
             mintedByYear[1] = _initialSupply;
             
-            // Emit event for transparency - now shows vesting contract
-            emit InitialDistribution(_vestingContract, _initialSupply, block.timestamp);
+            // Emit event for transparency
+            emit InitialDistribution(address(0), _initialSupply, block.timestamp);
         }
         
         // Initialize mint year tracking
+        // HARDCODED to 01/01/2025 - Year 1 = 2025, Year 2 = 2026, etc.
         currentMintYear = 1;
-        mintYearStartTime = block.timestamp;
-        originalMintYearStartTime = block.timestamp; // Store original start time
+        mintYearStartTime = YEAR_2025_START;
+        originalMintYearStartTime = YEAR_2025_START;
+        
+        // Set privilegedMultisigWallet (set một lần duy nhất trong initialize, không có setter)
+        // Validate: không được zero (bắt buộc phải set)
+        if (_privilegedMultisigWallet == address(0)) revert ZeroAddress();
+        
+        // Validate: phải là contract address (multisig wallet)
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(_privilegedMultisigWallet)
+        }
+        if (codeSize == 0) revert NotContract();
+        
+        // Set privilegedMultisigWallet (chỉ set một lần trong initialize)
+        privilegedMultisigWallet = _privilegedMultisigWallet;
     }
     
     // Legacy initializer removed to eliminate single-holder initial distribution path
+
+    // ============ Distribution Configuration ============
+    
+    /**
+     * @notice Set token distribution configuration (only owner, can only set once)
+     * @param _communityEcosystem Community & Ecosystem wallet (60%)
+     * @param _liquidityBuybackReserve Liquidity, Buyback & Reserve wallet (12%)
+     * @param _marketingPartnerships Marketing & Partnerships wallet (10%)
+     * @param _teamFounders Team & Founders wallet (8%)
+     * @param _strategicAdvisors Strategic Advisors wallet (5%)
+     * @param _seedStrategicVC Seed & Strategic VC wallet (5%)
+     * @dev This function can only be called once. Addresses are immutable after set.
+     *      All addresses must be contracts (multisig wallets), not EOA.
+     */
+    function setDistributionConfig(
+        address _communityEcosystem,
+        address _liquidityBuybackReserve,
+        address _marketingPartnerships,
+        address _teamFounders,
+        address _strategicAdvisors,
+        address _seedStrategicVC
+    ) external {
+        // Allow setting config before initialization (no owner check)
+        // After initialization, only owner can call (checked via onlyOwner if needed)
+        // For now, allow anyone to set before init, but in practice should be deployer
+        // Can only set once
+        if (configSet) revert ConfigAlreadySet();
+        
+        // Validate all addresses are not zero
+        if (_communityEcosystem == address(0)) revert ZeroAddress();
+        if (_liquidityBuybackReserve == address(0)) revert ZeroAddress();
+        if (_marketingPartnerships == address(0)) revert ZeroAddress();
+        if (_teamFounders == address(0)) revert ZeroAddress();
+        if (_strategicAdvisors == address(0)) revert ZeroAddress();
+        if (_seedStrategicVC == address(0)) revert ZeroAddress();
+        
+        // Validate all addresses are contracts (multisig wallets)
+        if (_communityEcosystem.code.length == 0) revert NotContract();
+        if (_liquidityBuybackReserve.code.length == 0) revert NotContract();
+        if (_marketingPartnerships.code.length == 0) revert NotContract();
+        if (_teamFounders.code.length == 0) revert NotContract();
+        if (_strategicAdvisors.code.length == 0) revert NotContract();
+        if (_seedStrategicVC.code.length == 0) revert NotContract();
+        
+        // Prevent duplicate addresses
+        if (_communityEcosystem == _liquidityBuybackReserve) revert DuplicateAddress();
+        if (_communityEcosystem == _marketingPartnerships) revert DuplicateAddress();
+        if (_communityEcosystem == _teamFounders) revert DuplicateAddress();
+        if (_communityEcosystem == _strategicAdvisors) revert DuplicateAddress();
+        if (_communityEcosystem == _seedStrategicVC) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _marketingPartnerships) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _teamFounders) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _strategicAdvisors) revert DuplicateAddress();
+        if (_liquidityBuybackReserve == _seedStrategicVC) revert DuplicateAddress();
+        if (_marketingPartnerships == _teamFounders) revert DuplicateAddress();
+        if (_marketingPartnerships == _strategicAdvisors) revert DuplicateAddress();
+        if (_marketingPartnerships == _seedStrategicVC) revert DuplicateAddress();
+        if (_teamFounders == _strategicAdvisors) revert DuplicateAddress();
+        if (_teamFounders == _seedStrategicVC) revert DuplicateAddress();
+        if (_strategicAdvisors == _seedStrategicVC) revert DuplicateAddress();
+        
+        // Set distribution config
+        distributionConfig = DistributionConfig({
+            communityEcosystem: _communityEcosystem,
+            liquidityBuybackReserve: _liquidityBuybackReserve,
+            marketingPartnerships: _marketingPartnerships,
+            teamFounders: _teamFounders,
+            strategicAdvisors: _strategicAdvisors,
+            seedStrategicVC: _seedStrategicVC
+        });
+        
+        // Mark as set (immutable)
+        configSet = true;
+        
+        emit DistributionConfigSet(
+            _communityEcosystem,
+            _liquidityBuybackReserve,
+            _marketingPartnerships,
+            _teamFounders,
+            _strategicAdvisors,
+            _seedStrategicVC
+        );
+    }
+
+    // ============ Oracle Integration Functions ============
+    
+    /**
+     * @notice Set TokenMintFeed oracle address (only privileged multisig wallet)
+     * @param _tokenMintFeed Address of TokenMintFeed contract
+     */
+    function setTokenMintFeed(address _tokenMintFeed) external onlyPrivilegedMultisig {
+        if (_tokenMintFeed == address(0)) revert ZeroAddress();
+        
+        // Validate: phải là contract address
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(_tokenMintFeed)
+        }
+        if (codeSize == 0) revert NotContract();
+        
+        address oldFeed = tokenMintFeed;
+        tokenMintFeed = _tokenMintFeed;
+        
+        emit TokenMintFeedUpdated(oldFeed, _tokenMintFeed);
+    }
+    
+    /**
+     * @notice Get mint amount from oracle
+     * @param _oracleRequestId Oracle request ID
+     * @return tokensToMint Amount of tokens to mint from oracle
+     */
+    function _getMintAmountFromOracle(uint256 _oracleRequestId) internal view returns (uint256 tokensToMint) {
+        // Validate tokenMintFeed is set
+        if (tokenMintFeed == address(0)) revert OracleNotSet();
+        
+        // Call oracle to get mint data
+        try ITokenMintFeed(tokenMintFeed).getLatestMintData(_oracleRequestId) returns (
+            uint256,
+            uint256,
+            uint256 _tokensToMint,
+            uint64,
+            bool _finalized
+        ) {
+            // Validate finalized = true
+            if (!_finalized) revert OracleDataNotFinalized();
+            
+            // Validate tokensToMint > 0
+            if (_tokensToMint == 0) revert InvalidOracleAmount();
+            
+            return _tokensToMint;
+        } catch {
+            // Oracle revert (e.g., requestId không tồn tại)
+            revert OracleRequestNotFound();
+        }
+    }
 
     // ============ Minting Functions ============
 
     /**
      * @notice Create a mint request (only owner/timelock can call)
-     * @param _recipient Address to receive tokens
-     * @param _amount Amount to mint
+     * @param _recipient Address to receive tokens (for reference, tokens are distributed to 6 multisig wallets)
+     * @param _oracleRequestId Oracle request ID (required, amount will be fetched from oracle)
      * @param _purpose Purpose of minting (for transparency)
      */
     function createMintRequest(
         address _recipient,
-        uint256 _amount,
+        uint256 _oracleRequestId,
         string memory _purpose
     ) external onlyOwner validAddress(_recipient) returns (uint256 requestId) {
-        if (_amount == 0) revert InvalidAmount();
+        // Validate _oracleRequestId > 0
+        if (_oracleRequestId == 0) revert InvalidOracleRequestId();
         
+        // Get amount from oracle
+        uint256 _amount = _getMintAmountFromOracle(_oracleRequestId);
+        
+        // CALENDAR YEAR VALIDATION: Check if we're in the mint period (2025-2049)
+        // 31/12/2049 23:59:59 UTC = 2524607999
+        if (block.timestamp < YEAR_2025_START) {
+            revert MintingPeriodNotStarted();
+        }
+
         // Check if we need to reset annual mint tracking
         _checkAndResetMintYear();
         
@@ -208,7 +441,8 @@ contract HyraToken is
             amount: _amount,
             approvedAt: block.timestamp,
             executed: false,
-            purpose: _purpose
+            purpose: _purpose,
+            yearCreated: currentMintYear // Store the year this request was created for
         });
         
         emit MintRequestCreated(requestId, _recipient, _amount, _purpose);
@@ -240,7 +474,8 @@ contract HyraToken is
         request.executed = true;
         
         // Update year-specific tracking with overflow/underflow checks
-        uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        // Use yearCreated instead of calculating from approvedAt to ensure correct tracking
+        uint256 requestYear = request.yearCreated;
         
         // Check for overflow
         require(mintedByYear[requestYear] + request.amount >= mintedByYear[requestYear], "MintedByYear overflow");
@@ -253,11 +488,14 @@ contract HyraToken is
         pendingByYear[requestYear] -= request.amount;
         totalMintedSupply += request.amount;
         
-        // Mint tokens
-        _mint(request.recipient, request.amount);
+        // Distribution config must be set
+        if (!configSet) revert ConfigNotSet();
         
-        emit MintRequestExecuted(_requestId, request.recipient, request.amount);
-        emit TokensMinted(request.recipient, request.amount, totalSupply());
+        // Distribute tokens to 6 multisig wallets (ignore request.recipient)
+        _distributeTokens(request.amount);
+        
+        emit MintRequestExecuted(_requestId, address(0), request.amount);
+        emit TokensMinted(address(0), request.amount, totalSupply());
     }
     
     /**
@@ -274,7 +512,8 @@ contract HyraToken is
         if (request.executed) revert AlreadyExecuted();
         
         // Update year-specific pending tracking with underflow check
-        uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+        // Use yearCreated to ensure correct tracking
+        uint256 requestYear = request.yearCreated;
         require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
         pendingByYear[requestYear] -= request.amount;
         
@@ -296,6 +535,55 @@ contract HyraToken is
      * @param year The year number (1-based)
      * @return Annual mint cap for that year
      */
+    /**
+     * @notice Internal function to distribute tokens to 6 wallets with fixed percentages
+     * @param _totalAmount Total amount to distribute
+     * @dev Distribution percentages: 60%, 12%, 10%, 8%, 5%, 5%
+     *      Remainder from rounding goes to Community & Ecosystem (largest allocation)
+     */
+    function _distributeTokens(uint256 _totalAmount) internal {
+        require(configSet, "Distribution config not set");
+        require(_totalAmount > 0, "Amount must be greater than 0");
+        
+        uint256 basisPoints = 10000;
+        
+        // Calculate distribution amounts using basis points (fixed percentages)
+        uint256 community = (_totalAmount * 6000) / basisPoints;      // 60%
+        uint256 liquidity = (_totalAmount * 1200) / basisPoints;      // 12%
+        uint256 marketing = (_totalAmount * 1000) / basisPoints;      // 10%
+        uint256 team = (_totalAmount * 800) / basisPoints;            // 8%
+        uint256 advisors = (_totalAmount * 500) / basisPoints;       // 5%
+        uint256 seed = (_totalAmount * 500) / basisPoints;           // 5%
+        
+        // Calculate remainder (due to rounding)
+        uint256 distributed = community + liquidity + marketing + team + advisors + seed;
+        uint256 remainder = _totalAmount - distributed;
+        
+        // Add remainder to largest allocation (Community & Ecosystem)
+        community += remainder;
+        
+        // Verify total (safety check)
+        require(community + liquidity + marketing + team + advisors + seed == _totalAmount, "Distribution math error");
+        
+        // Mint to each wallet
+        _mint(distributionConfig.communityEcosystem, community);
+        _mint(distributionConfig.liquidityBuybackReserve, liquidity);
+        _mint(distributionConfig.marketingPartnerships, marketing);
+        _mint(distributionConfig.teamFounders, team);
+        _mint(distributionConfig.strategicAdvisors, advisors);
+        _mint(distributionConfig.seedStrategicVC, seed);
+        
+        emit TokensDistributed(
+            _totalAmount,
+            community,
+            liquidity,
+            marketing,
+            team,
+            advisors,
+            seed
+        );
+    }
+    
     function _getAnnualMintCap(uint256 year) private pure returns (uint256) {
         // FIXED: Use range checks instead of strict equality
         if (year < 1 || year > TIER3_END_YEAR) {
@@ -522,15 +810,15 @@ contract HyraToken is
 
     /**
      * @notice Get total maximum mintable supply over 25 years
-     * @return Total of all tier caps plus initial mint (42.5B tokens)
+     * @return Total of all tier caps plus initial mint (40B tokens = 80% of MAX_SUPPLY)
      */
     function getMaxMintableSupply() external pure returns (uint256) {
-        return 2_500_000_000e18 +         // Initial mint: 2.5B
-               (TIER1_ANNUAL_CAP * 10) +  // Year 1-10: 25B
-               (TIER2_ANNUAL_CAP * 5) +   // Year 11-15: 7.5B
-               (TIER3_ANNUAL_CAP * 10);   // Year 16-25: 7.5B
-               // Total: 42.5B (85% of MAX_SUPPLY)
-               // Reserved: 7.5B (15% never minted)
+        return 2_500_000_000e18 +         // Year 1 pre-mint: 2.5B
+               (TIER1_ANNUAL_CAP * 9) +   // Year 2-10 (9 years): 22.5B
+               (TIER2_ANNUAL_CAP * 5) +   // Year 11-15 (5 years): 7.5B
+               (TIER3_ANNUAL_CAP * 10);   // Year 16-25 (10 years): 7.5B
+               // Total: 40B (80% of MAX_SUPPLY)
+               // Reserved: 10B (20% never minted)
     }
 
     // ============ Internal Functions ============
@@ -578,7 +866,7 @@ contract HyraToken is
                 currentTime > request.approvedAt + REQUEST_EXPIRY_PERIOD) {
                 
                 // Auto-cancel expired request with underflow check
-                uint256 requestYear = _calculateYearFromTimestamp(request.approvedAt);
+                uint256 requestYear = request.yearCreated;
                 require(pendingByYear[requestYear] >= request.amount, "PendingByYear underflow");
                 pendingByYear[requestYear] -= request.amount;
                 

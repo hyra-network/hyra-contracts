@@ -60,10 +60,12 @@ async function simpleDeploy() {
     console.log(`   ProxyAdminValidator deployed at: ${await proxyAdminValidator.getAddress()}`);
 
     // 9. Deploy HyraDAOInitializer
-    console.log("9. Deploying HyraDAOInitializer...");
-    const HyraDAOInitializerFactory = await ethers.getContractFactory("HyraDAOInitializer");
-    const daoInitializer = await HyraDAOInitializerFactory.deploy();
-    console.log(`   HyraDAOInitializer deployed at: ${await daoInitializer.getAddress()}`);
+    // NOTE: HyraDAOInitializer contract has been moved to backup
+    // console.log("9. Deploying HyraDAOInitializer...");
+    // const HyraDAOInitializerFactory = await ethers.getContractFactory("HyraDAOInitializer");
+    // const daoInitializer = await HyraDAOInitializerFactory.deploy();
+    // console.log(`   HyraDAOInitializer deployed at: ${await daoInitializer.getAddress()}`);
+    const daoInitializer = null; // Contract moved to backup
 
     console.log("\n DEPLOYMENT SUMMARY");
     console.log("=" .repeat(50));
@@ -75,7 +77,7 @@ async function simpleDeploy() {
     console.log(`Vesting: ${await vesting.getAddress()}`);
     console.log(`ExecutorManager: ${await executorManager.getAddress()}`);
     console.log(`ProxyAdminValidator: ${await proxyAdminValidator.getAddress()}`);
-    console.log(`DAOInitializer: ${await daoInitializer.getAddress()}`);
+    // console.log(`DAOInitializer: ${await daoInitializer.getAddress()}`); // Contract moved to backup
 
     console.log("\ All contracts deployed successfully!");
 
@@ -84,12 +86,18 @@ async function simpleDeploy() {
 
     // Test token initialization
     console.log("Testing token initialization...");
+    // Load and validate Privileged Multisig Wallet
+    const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET || deployer.address;
+    if (!ethers.isAddress(privilegedMultisigWallet)) {
+      throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
+    }
     await token.initialize(
-      "Hyra Test Token",
-      "HYRA-TEST",
+      "HYRA",
+      "HYRA",
       ethers.parseEther("1000000"),
       deployer.address,
-      deployer.address
+      deployer.address,
+      privilegedMultisigWallet
     );
     console.log("   Token initialized");
 
@@ -146,8 +154,8 @@ async function simpleDeploy() {
         proxyDeployer: await proxyDeployer.getAddress(),
         vesting: await vesting.getAddress(),
         executorManager: await executorManager.getAddress(),
-        proxyAdminValidator: await proxyAdminValidator.getAddress(),
-        daoInitializer: await daoInitializer.getAddress()
+        proxyAdminValidator: await proxyAdminValidator.getAddress()
+        // daoInitializer: await daoInitializer.getAddress() // Contract moved to backup
       }
     };
 

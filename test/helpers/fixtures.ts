@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 import { time, mine } from "@nomicfoundation/hardhat-network-helpers";
 
-export const NAME = "Hyra Token";
+export const NAME = "HYRA";
 export const SYMBOL = "HYRA";
 export const INITIAL_SUPPLY = ethers.parseEther("1000000"); // initial supply for core token tests
 
@@ -67,27 +67,55 @@ export async function deployCore() {
   const tokenImpl = await TokenImpl.deploy();
   await tokenImpl.waitForDeployment();
 
-  const tokenInit = TokenImpl.interface.encodeFunctionData("initialize", [
-    NAME,
-    SYMBOL,
-    INITIAL_SUPPLY,
-    voter1.address,
-    timelockProxyAddr, // owner/governance is Timelock (proxy)
-  ]);
-
+  // Deploy proxy with empty init data first (to set distribution config before initialize)
   const tokenProxy = await proxyDeployer.deployProxy.staticCall(
     await tokenImpl.getAddress(),
     await proxyAdmin.getAddress(),
-    tokenInit,
+    "0x",
     "HyraToken"
   );
   await (await proxyDeployer.deployProxy(
     await tokenImpl.getAddress(),
     await proxyAdmin.getAddress(),
-    tokenInit,
+    "0x",
     "HyraToken"
   )).wait();
   const token = await ethers.getContractAt("HyraToken", tokenProxy);
+
+  // Deploy 6 mock distribution wallets for setDistributionConfig
+  const MockDistributionWallet = await ethers.getContractFactory("MockDistributionWallet");
+  const distributionWallets = [];
+  for (let i = 0; i < 6; i++) {
+    const wallet = await MockDistributionWallet.deploy(deployer.address);
+    await wallet.waitForDeployment();
+    distributionWallets.push(await wallet.getAddress());
+  }
+
+  // Set distribution config BEFORE initialize
+  await token.setDistributionConfig(
+    distributionWallets[0],
+    distributionWallets[1],
+    distributionWallets[2],
+    distributionWallets[3],
+    distributionWallets[4],
+    distributionWallets[5]
+  );
+
+  // Deploy a mock contract to use as privilegedMultisigWallet (must be contract, not EOA)
+  const MockMultisig = await ethers.getContractFactory("MockDistributionWallet");
+  const privilegedMultisig = await MockMultisig.deploy(deployer.address);
+  await privilegedMultisig.waitForDeployment();
+
+  // Now initialize token
+  await token.initialize(
+    NAME,
+    SYMBOL,
+    INITIAL_SUPPLY,
+    voter1.address,
+    timelockProxyAddr, // owner/governance is Timelock (proxy)
+    0, // yearStartTime - 0 means use block.timestamp
+    await privilegedMultisig.getAddress() // privilegedMultisigWallet (must be contract)
+  );
 
   await (await proxyAdmin.addProxy(tokenProxy, "HyraToken")).wait(); // add token proxy to proxy admin
   await (await proxyAdmin.transferOwnership(timelockProxyAddr)).wait();
@@ -104,6 +132,7 @@ export async function deployCore() {
     VOTING_PERIOD,
     PROPOSAL_THRESHOLD,
     BASE_QUORUM_PERCENT,
+    ethers.ZeroAddress, // privilegedMultisigWallet - can be set later via governance
   ]);
 
   const governorProxy = await proxyDeployer.deployProxy.staticCall(

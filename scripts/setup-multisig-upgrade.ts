@@ -75,7 +75,7 @@ class MultiSigUpgradeSetup {
   async createSecureDAOConfig(multisigAddress: string) {
     const daoConfig = {
       // Token config
-      tokenName: "Hyra Token",
+      tokenName: "HYRA",
       tokenSymbol: "HYRA",
       initialSupply: ethers.parseEther("2500000000"), // 2.5B tokens
       
@@ -124,11 +124,14 @@ class MultiSigUpgradeSetup {
     const daoConfig = await this.createSecureDAOConfig(multisigAddress);
     
     // Deploy DAO Initializer
-    const DAOInitializer = await ethers.getContractFactory("HyraDAOInitializer");
-    const daoInitializer = await DAOInitializer.deploy();
+    // NOTE: HyraDAOInitializer contract has been moved to backup
+    // const DAOInitializer = await ethers.getContractFactory("HyraDAOInitializer");
+    // const daoInitializer = await DAOInitializer.deploy();
+    // 
+    // console.log("Deploying DAO...");
+    // const deploymentResult = await daoInitializer.deployDAO(daoConfig);
     
-    console.log("Deploying DAO...");
-    const deploymentResult = await daoInitializer.deployDAO(daoConfig);
+    throw new Error("HyraDAOInitializer contract has been moved to backup. Please use alternative deployment method.");
     
     console.log("DAO deployed successfully!");
     console.log(`Token Proxy: ${deploymentResult.tokenProxy}`);

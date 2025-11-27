@@ -12,7 +12,7 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
       evmVersion: "cancun",
-      viaIR: true,
+      viaIR: false, // Required to fix "Stack too deep" error in complex functions
     },
   },
   networks: {
@@ -21,6 +21,13 @@ const config: HardhatUserConfig = {
     },
     localhost: {
       allowUnlimitedContractSize: true,
+    },
+    baseSepolia: {
+      url: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 84532,
+      gasPrice: 20000000000, // 20 gwei
+      gas: 8000000, // 8M gas limit
     },
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL || "https://sepolia.infura.io/v3/YOUR_INFURA_KEY",
@@ -43,6 +50,16 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY || "",
+    customChains: [
+      {
+        network: "baseSepolia",
+        chainId: 84532,
+        urls: {
+          apiURL: "https://api-sepolia.basescan.org/api",
+          browserURL: "https://sepolia.basescan.org",
+        },
+      },
+    ],
   },
 };
 
