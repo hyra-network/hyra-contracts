@@ -118,18 +118,27 @@ async function main() {
   console.log(`   ⚠️  Year 1 quota will be FULL - cannot mint more until Year 2`);
   console.log(`   ⚡⚡⚡ Year 2 available after just 1 HOUR!`);
 
-  // Year start time for TESTNET: Always use deployment time (block.timestamp)
-  // This makes testing easier - Year 1 starts immediately when deployed
-  const YEAR_START_TIME = 0; // 0 = use block.timestamp (deployment time)
-  console.log(`   Year 1 Start: block.timestamp (deployment time)`);
+  // Load and validate Privileged Multisig Wallet
+  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
+  if (!privilegedMultisigWallet) {
+    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env");
+  }
+  if (!ethers.isAddress(privilegedMultisigWallet)) {
+    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
+  }
+  const code = await ethers.provider.getCode(privilegedMultisigWallet);
+  if (code === "0x") {
+    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
+  }
+  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
 
   const tokenInit = HyraTokenUltraFastTest.interface.encodeFunctionData("initialize", [
     "HYRA",
     "HYRA",
     INITIAL_SUPPLY_MAX, // 2.5B initial supply (MAX)
-    safeAddress,        // MINT TO SAFE MULTISIG
+    safeAddress,        // vesting contract (not used when distributing)
     await deployer.getAddress(),  // Temporary owner (deployer)
-    YEAR_START_TIME     // Year 1 start timestamp
+    privilegedMultisigWallet // Privileged Multisig Wallet
   ]);
   
   const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });

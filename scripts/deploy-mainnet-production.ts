@@ -165,7 +165,7 @@ async function main() {
       INITIAL_SUPPLY,
       await vestingProxy.getAddress(),
       await deployer.getAddress(), // temporary owner
-      YEAR_START_TIME
+      privilegedMultisigWallet
     )
   ).wait();
   console.log("   Initial supply distributed to 6 multisig wallets");

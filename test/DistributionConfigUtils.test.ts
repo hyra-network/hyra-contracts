@@ -120,7 +120,7 @@ describe("DistributionConfig utilities", function () {
     await privilegedMultisig.waitForDeployment();
 
     const initialSupply = ethers.parseEther("1000");
-    await token.initialize("HYRA", "HYRA", initialSupply, addresses.communityEcosystem, ownerEOA, 0, await privilegedMultisig.getAddress());
+    await token.initialize("HYRA", "HYRA", initialSupply, addresses.communityEcosystem, ownerEOA, await privilegedMultisig.getAddress());
 
     await expect(verifyDistributionBalances(token, addresses, initialSupply)).to.be.fulfilled;
     await expect(

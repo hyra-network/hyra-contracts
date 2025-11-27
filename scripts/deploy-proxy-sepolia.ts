@@ -80,7 +80,7 @@ async function main() {
 			INITIAL_SUPPLY,
 			await vestingProxy.getAddress(),
 			governanceOwner,
-			0
+			privilegedMultisigWallet
 		)
 	).wait();
 	console.log("HyraToken initialized and initial supply distributed to 6 multisig wallets");

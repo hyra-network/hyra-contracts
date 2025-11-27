@@ -73,7 +73,12 @@ async function simpleDeploy() {
         console.log("\n Testing basic functionality...");
         // Test token initialization
         console.log("Testing token initialization...");
-        await token.initialize("HYRA", "HYRA", hardhat_1.ethers.parseEther("1000000"), deployer.address, deployer.address);
+        // Load and validate Privileged Multisig Wallet
+        const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET || deployer.address;
+        if (!hardhat_1.ethers.isAddress(privilegedMultisigWallet)) {
+            throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
+        }
+        await token.initialize("HYRA", "HYRA", hardhat_1.ethers.parseEther("1000000"), deployer.address, deployer.address, privilegedMultisigWallet);
         console.log("   Token initialized");
         // Test timelock initialization
         console.log("Testing timelock initialization...");

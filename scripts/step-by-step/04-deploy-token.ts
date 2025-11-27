@@ -47,15 +47,28 @@ async function main() {
   const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
 
   const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5B
-  const YEAR_START_TIME = 1735689600; // Jan 1, 2025 00:00:00 UTC
+  
+  // Load and validate Privileged Multisig Wallet
+  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
+  if (!privilegedMultisigWallet) {
+    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env");
+  }
+  if (!ethers.isAddress(privilegedMultisigWallet)) {
+    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
+  }
+  const code = await ethers.provider.getCode(privilegedMultisigWallet);
+  if (code === "0x") {
+    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
+  }
+  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
   
   const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
     "HYRA",
     "HYRA",
     INITIAL_SUPPLY,
-    safeAddress,                          // Initial supply recipient
+    safeAddress,                          // vesting contract (not used when distributing)
     await deployer.getAddress(),          // Temporary owner
-    YEAR_START_TIME
+    privilegedMultisigWallet              // Privileged Multisig Wallet
   ]);
   
   const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });

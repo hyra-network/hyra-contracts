@@ -119,7 +119,7 @@ async function main() {
 			INITIAL_SUPPLY_MAX,
 			await vesting.getAddress(),  // vesting contract (not used when distributing)
 			await timelock.getAddress(),
-			0  // yearStartTime
+			await privilegedMultisig.getAddress()
 		)
 	).wait();
 	console.log(`✅ HyraToken initialized - 2.5B HYRA distributed to 6 multisig wallets`);
