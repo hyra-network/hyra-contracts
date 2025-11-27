@@ -12,6 +12,7 @@ import "../security/SecureExecutorManager.sol";
 import "../security/ProxyAdminValidator.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "../proxy/HyraTransparentUpgradeableProxy.sol";
+import "../mock/MockDistributionWallet.sol";
 
 /**
  * @title HyraDAOInitializer
@@ -38,6 +39,8 @@ contract HyraDAOInitializer {
         // Multi-signature config
         address[] multisigSigners;
         uint256 requiredSignatures;
+        // Privileged multisig wallet (for setting TokenMintFeed)
+        address privilegedMultisigWallet;
         // Vesting config
         VestingConfig vestingConfig;
     }
@@ -171,21 +174,41 @@ contract HyraDAOInitializer {
         // 7. Deploy Token implementation
         result.tokenImplementation = address(new HyraToken());
         
-        // 8. Deploy Token proxy with vesting contract address
-        bytes memory tokenInitData = abi.encodeWithSelector(
-            HyraToken.initialize.selector,
+        // 8. Deploy Token proxy with empty init data first (to set distribution config before initialize)
+        result.tokenProxy = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
+            result.tokenImplementation,
+            result.proxyAdmin,
+            "", // Empty init data - we'll initialize after setting distribution config
+            "TOKEN"
+        );
+        
+        // 8.1 Deploy 6 mock distribution wallets for setDistributionConfig
+        // These are temporary addresses for testing - in production, use actual multisig wallets
+        address[6] memory distributionAddresses;
+        for (uint256 i = 0; i < 6; i++) {
+            MockDistributionWallet wallet = new MockDistributionWallet(address(this));
+            distributionAddresses[i] = address(wallet);
+        }
+        
+        // 8.2 Set distribution config BEFORE initialize (required by HyraToken)
+        HyraToken(result.tokenProxy).setDistributionConfig(
+            distributionAddresses[0], // Community & Ecosystem (60%)
+            distributionAddresses[1], // Liquidity, Buyback & Reserve (12%)
+            distributionAddresses[2], // Marketing & Partnerships (10%)
+            distributionAddresses[3], // Team & Founders (8%)
+            distributionAddresses[4], // Strategic Advisors (5%)
+            distributionAddresses[5]  // Seed & Strategic VC (5%)
+        );
+        
+        // 8.2 Now initialize token
+        HyraToken(result.tokenProxy).initialize(
             config.tokenName,
             config.tokenSymbol,
             config.initialSupply,
             result.vestingProxy, // Vesting contract receives initial tokens
-            result.timelockProxy // Timelock is the owner
-        );
-        
-        result.tokenProxy = IHyraProxyDeployer(result.proxyDeployer).deployProxy(
-            result.tokenImplementation,
-            result.proxyAdmin,
-            tokenInitData,
-            "TOKEN"
+            result.timelockProxy, // Timelock is the owner
+            0, // yearStartTime - 0 means use block.timestamp
+            config.privilegedMultisigWallet // privilegedMultisigWallet
         );
         
         // 9. Initialize Vesting contract with token address (temporary owner = initializer)
@@ -203,7 +226,8 @@ contract HyraDAOInitializer {
             config.votingDelay,
             config.votingPeriod,
             config.proposalThreshold,
-            quorumArg
+            quorumArg,
+            config.privilegedMultisigWallet // privilegedMultisigWallet
         );
         
         result.governorProxy = IHyraProxyDeployer(result.proxyDeployer).deployProxy(

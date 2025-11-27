@@ -12,7 +12,7 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
       evmVersion: "cancun",
-      viaIR: false,
+      viaIR: true, // Required to fix "Stack too deep" error in complex functions
     },
   },
   networks: {
