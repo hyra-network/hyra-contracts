@@ -2,6 +2,10 @@
 import { ethers, run } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
+
+// Load .env.dev for Base Sepolia testnet
+dotenv.config({ path: ".env.dev" });
 
 function loadLatest(prefix: string) {
 	const dir = path.join(__dirname, "..", "deployments");

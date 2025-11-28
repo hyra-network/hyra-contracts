@@ -1,7 +1,18 @@
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline";
+import * as dotenv from "dotenv";
+
+// Auto-detect environment file based on network:
+// - baseSepolia: .env.dev (testnet)
+// - mainnet: .env.prod (production)
+// - other networks: .env (default)
+// Can override with DOTENV_CONFIG_PATH environment variable
+const envFile = process.env.DOTENV_CONFIG_PATH || 
+  (network.name === "baseSepolia" ? ".env.dev" : 
+   network.name === "mainnet" ? ".env.prod" : ".env");
+dotenv.config({ path: envFile });
 
 /**
  * Step 6: Deploy HyraGovernor
@@ -49,7 +60,7 @@ async function main() {
   // Load and validate Privileged Multisig Wallet
   const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
   if (!privilegedMultisigWallet) {
-    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env");
+    throw new Error(`PRIVILEGED_MULTISIG_WALLET not set in ${envFile}`);
   }
   if (!ethers.isAddress(privilegedMultisigWallet)) {
     throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);

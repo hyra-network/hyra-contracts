@@ -1,19 +1,26 @@
 import { ethers } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
+
+// Load .env.dev for Base Sepolia testnet deployment
+dotenv.config({ path: ".env.dev" });
 
 /**
- * Deploy HyraTokenFastTest to Base Sepolia for quick UI testing
+ * Deploy HyraTokenUltraFastTest to Base Sepolia for EXTREME FAST GUI testing
  * ⚠️ MINT_EXECUTION_DELAY = 2 MINUTES (not 2 days!)
+ * ⚡⚡⚡ YEAR_DURATION = 1 HOUR (not 365 days!)
  */
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("Deployer:", await deployer.getAddress());
   console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(await deployer.getAddress())), "ETH");
 
-  console.log("\n⚡ Deploying FAST TEST contracts (2 minute delay) to Base Sepolia...\n");
-  console.log("⚠️  WARNING: These contracts are for TESTING ONLY!");
-  console.log("   MINT_EXECUTION_DELAY = 2 MINUTES (not 2 days)\n");
+  console.log("\n⚡⚡⚡ Deploying ULTRA FAST TEST contracts to Base Sepolia...\n");
+  console.log("⚠️  WARNING: These contracts are for EXTREME TESTING ONLY!");
+  console.log("   MINT_EXECUTION_DELAY = 2 MINUTES (not 2 days)");
+  console.log("   YEAR_DURATION = 1 HOUR (not 365 days!)");
+  console.log("   → Year 2 available after just 1 HOUR! ⚡\n");
 
   // 1. Deploy Infrastructure Contracts
   console.log("=== Deploying Infrastructure Contracts ===\n");
@@ -58,7 +65,7 @@ async function main() {
 
   console.log("\n=== Deploying Core Contracts ===\n");
 
-  // 2. Deploy HyraTimelockTestable with minimal delay
+  // 2. Deploy HyraTimelock with minimal delay
   console.log("1. Deploying HyraTimelock with 1 minute delay...");
   const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
   const timelockImpl = await HyraTimelock.deploy({ gasLimit: 8_000_000 });
@@ -79,7 +86,7 @@ async function main() {
   console.log(`   Proxy: ${await timelockProxy.getAddress()}`);
   console.log(`   ✅ Timelock deployed with 1 minute delay`);
 
-  // 2. Deploy TokenVesting
+  // 3. Deploy TokenVesting
   console.log("\n2. Deploying TokenVesting...");
   const TokenVesting = await ethers.getContractFactory("TokenVesting");
   const vestingImpl = await TokenVesting.deploy({ gasLimit: 8_000_000 });
@@ -94,10 +101,10 @@ async function main() {
   await vestingProxy.waitForDeployment();
   console.log(`   Proxy: ${await vestingProxy.getAddress()}`);
 
-  // 3. Deploy HyraTokenFastTest
-  console.log("\n3. Deploying HyraTokenFastTest (2 minute delay)...");
-  const HyraTokenFastTest = await ethers.getContractFactory("HyraTokenFastTest");
-  const tokenImpl = await HyraTokenFastTest.deploy({ gasLimit: 8_000_000 });
+  // 4. Deploy HyraTokenUltraFastTest
+  console.log("\n3. Deploying HyraTokenUltraFastTest (2 minute delay, 1 HOUR year)...");
+  const HyraTokenUltraFastTest = await ethers.getContractFactory("HyraTokenUltraFastTest");
+  const tokenImpl = await HyraTokenUltraFastTest.deploy({ gasLimit: 8_000_000 });
   await tokenImpl.waitForDeployment();
   console.log(`   Implementation: ${await tokenImpl.getAddress()}`);
 
@@ -113,49 +120,52 @@ async function main() {
   console.log(`   Initial Supply: 2.5B tokens (MAX - 5% of total supply)`);
   console.log(`   💰 Initial tokens will be minted to: Safe Multisig`);
   console.log(`   ⚠️  Year 1 quota will be FULL - cannot mint more until Year 2`);
+  console.log(`   ⚡⚡⚡ Year 2 available after just 1 HOUR!`);
 
-  const tokenInit = HyraTokenFastTest.interface.encodeFunctionData("initialize", [
+  // Load and validate Privileged Multisig Wallet
+  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
+  if (!privilegedMultisigWallet) {
+    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env.dev");
+  }
+  if (!ethers.isAddress(privilegedMultisigWallet)) {
+    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
+  }
+  const code = await ethers.provider.getCode(privilegedMultisigWallet);
+  if (code === "0x") {
+    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
+  }
+  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
+
+  const tokenInit = HyraTokenUltraFastTest.interface.encodeFunctionData("initialize", [
     "HYRA",
     "HYRA",
     INITIAL_SUPPLY_MAX, // 2.5B initial supply (MAX)
-    safeAddress,        // 👈 MINT TO SAFE MULTISIG!
-    safeAddress         // owner = Safe
+    safeAddress,        // vesting contract (not used when distributing)
+    await deployer.getAddress(),  // Temporary owner (deployer)
+    privilegedMultisigWallet // Privileged Multisig Wallet
   ]);
   
   const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
   await tokenProxy.waitForDeployment();
   console.log(`   Proxy: ${await tokenProxy.getAddress()}`);
-  console.log(`   ✅ Token deployed with 2 MINUTE delay!`);
-  console.log(`   ✅ Initial supply minted: 2.5B HYRA to Safe Multisig`);
+  console.log(`   Token deployed with ULTRA FAST settings!`);
+  console.log(`   Initial supply minted: 2.5B HYRA to Safe Multisig`);
+  console.log(`   Temporary owner: Deployer (will transfer to DAO later)`);
 
-  // 4. Initialize TokenVesting
+  // 5. Initialize TokenVesting
   console.log("\n4. Initializing TokenVesting...");
   const vesting = await ethers.getContractAt("TokenVesting", await vestingProxy.getAddress());
   await (await vesting.initialize(await tokenProxy.getAddress(), await timelockProxy.getAddress(), { gasLimit: 8_000_000 })).wait();
   console.log("   ✅ TokenVesting initialized");
 
-  // 5. Deploy HyraGovernor
+  // 6. Deploy HyraGovernor
   console.log("\n5. Deploying HyraGovernor...");
   const HyraGovernor = await ethers.getContractFactory("HyraGovernor");
   const governorImpl = await HyraGovernor.deploy({ gasLimit: 8_000_000 });
   await governorImpl.waitForDeployment();
   console.log(`   Implementation: ${await governorImpl.getAddress()}`);
 
-  // Load and validate Privileged Multisig Wallet
-  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
-  if (!privilegedMultisigWallet) {
-    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env");
-  }
-  if (!ethers.isAddress(privilegedMultisigWallet)) {
-    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
-  }
-  
-  // Validate it's a contract (multisig wallet)
-  const code = await ethers.provider.getCode(privilegedMultisigWallet);
-  if (code === "0x") {
-    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
-  }
-  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
+  // privilegedMultisigWallet already loaded and validated above
 
   const governorInit = HyraGovernor.interface.encodeFunctionData("initialize", [
     await tokenProxy.getAddress(),
@@ -171,12 +181,20 @@ async function main() {
   await governorProxy.waitForDeployment();
   console.log(`   Proxy: ${await governorProxy.getAddress()}`);
 
+  // 7. Transfer HyraToken ownership to DAO (Timelock)
+  console.log("\n6. Transferring HyraToken ownership to DAO...");
+  const token = await ethers.getContractAt("HyraTokenUltraFastTest", await tokenProxy.getAddress());
+  await (await token.transferOwnership(await timelockProxy.getAddress(), { gasLimit: 8_000_000 })).wait();
+  console.log(`   HyraToken ownership transferred to Timelock (DAO)`);
+  console.log(`   New owner: ${await timelockProxy.getAddress()}`);
+  console.log(`   All mint requests must now go through DAO governance!`);
+
   // Save deployment
   const deployment = {
     network: "baseSepolia",
     deployedAt: new Date().toISOString(),
     deployer: await deployer.getAddress(),
-    WARNING: "FAST TEST CONTRACTS - 2 MINUTE DELAY - DO NOT USE IN PRODUCTION",
+    WARNING: "⚡⚡⚡ ULTRA FAST TEST - 1 HOUR PER YEAR - EXTREME TESTING ONLY!",
     initialSupply: "2500000000", // 2.5B tokens (5% of max supply)
     initialSupplyNote: "FULL Year 1 quota - cannot mint more until Year 2",
     initialSupplyRecipient: safeAddress, // Safe Multisig receives initial supply
@@ -184,13 +202,14 @@ async function main() {
     delays: {
       MINT_EXECUTION_DELAY: "2 minutes",
       TIMELOCK_MIN_DELAY: "1 minute",
-      REQUEST_EXPIRY_PERIOD: "7 days"
+      REQUEST_EXPIRY_PERIOD: "7 days",
+      YEAR_DURATION: "1 HOUR ⚡⚡⚡"
     },
     tokenomics: {
       maxSupply: "50000000000", // 50B
       initialSupply: "2500000000", // 2.5B (5%)
       year1Remaining: "0", // FULL
-      nextMintAvailable: "Year 2 (after 365 days)",
+      nextMintAvailable: "Year 2 (after 1 HOUR!)",
       initialSupplyRecipient: "Safe Multisig (NOT Vesting)",
     },
     infra: {
@@ -207,50 +226,62 @@ async function main() {
     timelockProxy: await timelockProxy.getAddress(),
     governorImpl: await governorImpl.getAddress(),
     governorProxy: await governorProxy.getAddress(),
-    owner: safeAddress
+    tokenOwner: await timelockProxy.getAddress(), // Ownership transferred to DAO
+    ownershipNote: "HyraToken owner = HyraTimelock (DAO). All mint requests must go through governance."
   };
 
-  const deploymentPath = path.join(__dirname, "..", "deployments", `fast-test-baseSepolia-${Date.now()}.json`);
+  const deploymentPath = path.join(__dirname, "..", "deployments", `ultra-fast-baseSepolia-${Date.now()}.json`);
   fs.writeFileSync(deploymentPath, JSON.stringify(deployment, null, 2));
 
   console.log("\n=== Deployment Complete ===");
   console.log(`Deployment file: ${deploymentPath}`);
   
-  console.log("\n📋 Infrastructure Contracts:");
+  console.log("\nInfrastructure Contracts:");
   console.log(`SecureProxyAdmin: ${await proxyAdmin.getAddress()}`);
   console.log(`HyraProxyDeployer: ${await proxyDeployer.getAddress()}`);
   console.log(`SecureExecutorManager: ${await executorManager.getAddress()}`);
   console.log(`ProxyAdminValidator: ${await proxyAdminValidator.getAddress()}`);
   
-  console.log("\n📋 Core Contract Addresses:");
+  console.log("\nCore Contract Addresses:");
   console.log(`TokenVesting (proxy): ${await vestingProxy.getAddress()}`);
-  console.log(`HyraTokenFastTest (proxy): ${await tokenProxy.getAddress()}`);
+  console.log(`HyraTokenUltraFastTest (proxy): ${await tokenProxy.getAddress()}`);
   console.log(`HyraTimelock (proxy): ${await timelockProxy.getAddress()}`);
   console.log(`HyraGovernor (proxy): ${await governorProxy.getAddress()}`);
-  console.log(`Owner: ${safeAddress}`);
+  
+  console.log("\nOWNERSHIP:");
+  console.log(`   - HyraToken Owner: ${await timelockProxy.getAddress()} (DAO)`);
+  console.log(`   - Initial Supply Recipient: ${safeAddress} (Safe Multisig)`);
+  console.log(`   - All mint requests must go through DAO governance`);
 
-  console.log("\n💰 TOKENOMICS:");
+  console.log("\nTOKENOMICS:");
   console.log(`   - Initial Supply: 2.5B HYRA (MAX 5%)`);
   console.log(`   - Minted to: ${safeAddress} (Safe Multisig)`);
   console.log(`   - Year 1 Remaining: 0 (FULL)`);
-  console.log(`   ⚠️  Cannot mint more until Year 2!`);
+  console.log(`   WARNING: Cannot mint more until Year 2!`);
 
-  console.log("\n⚡ FAST TEST MODE:");
-  console.log(`   - Mint delay: 2 MINUTES (not 2 days!)`);
+  console.log("\nULTRA FAST TEST MODE:");
+  console.log(`   - Mint delay: 2 MINUTES`);
   console.log(`   - Timelock delay: 1 MINUTE`);
+  console.log(`   - Year duration: 1 HOUR`);
   console.log(`   - Request expiry: 7 days`);
+  console.log(``);
+  console.log(`   TEST YEAR 2 MINTING:`);
+  console.log(`   1. Deploy now (Year 1, 2.5B minted)`);
+  console.log(`   2. Wait 1 HOUR`);
+  console.log(`   3. Year 2 auto-activated!`);
+  console.log(`   4. Create mint proposal through DAO governance`);
+  console.log(`   5. Wait 2 MINUTES for execution`);
 
-  console.log("\n📝 Next steps:");
-  console.log("1. Verify contracts: npx hardhat run scripts/verify-base-sepolia.ts --network baseSepolia");
-  console.log("2. Test mint via Safe:");
-  console.log(`   - Create mint request`);
-  console.log(`   - Wait 2 MINUTES`);
-  console.log(`   - Execute mint request`);
-  console.log("3. Check status: npx hardhat run scripts/check-mint-status.ts --network baseSepolia");
+  console.log("\nNext steps:");
+  console.log("1. Verify contracts: npx hardhat run scripts/verify-ultra-fast-base-sepolia-dev.ts --network baseSepolia");
+  console.log("2. Wait 1 HOUR");
+  console.log("3. Test Year 2 minting through governance");
+  console.log("4. Check status: npx hardhat run scripts/check-mint-status.ts --network baseSepolia");
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
 

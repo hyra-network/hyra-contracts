@@ -1,22 +1,35 @@
 import { ethers } from "hardhat";
+import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  loadDistributionAddresses,
+  logDistributionAddresses,
+  verifyDistributionBalances,
+} from "./utils/distributionConfig";
 
 /**
- * Deploy HyraTokenUltraFastTest to Base Sepolia for EXTREME FAST GUI testing
- * ⚠️ MINT_EXECUTION_DELAY = 2 MINUTES (not 2 days!)
- * ⚡⚡⚡ YEAR_DURATION = 1 HOUR (not 365 days!)
+ * npx hardhat run scripts/deploy-mainnet-production-prod.ts --network mainnet
+ * Deploy HyraToken to Ethereum Mainnet for PRODUCTION
+ * Year 1 starts: January 1, 2025 00:00:00 UTC
+ * YEAR_DURATION = 365 days (production setting)
+ * MINT_EXECUTION_DELAY = 2 days (production setting)
  */
 async function main() {
+  // Mainnet production ALWAYS uses .env.prod (no override allowed for security)
+  const envFile = ".env.prod";
+  dotenv.config({ path: path.resolve(__dirname, "..", envFile) });
+
   const [deployer] = await ethers.getSigners();
   console.log("Deployer:", await deployer.getAddress());
   console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(await deployer.getAddress())), "ETH");
 
-  console.log("\n⚡⚡⚡ Deploying ULTRA FAST TEST contracts to Base Sepolia...\n");
-  console.log("⚠️  WARNING: These contracts are for EXTREME TESTING ONLY!");
-  console.log("   MINT_EXECUTION_DELAY = 2 MINUTES (not 2 days)");
-  console.log("   YEAR_DURATION = 1 HOUR (not 365 days!)");
-  console.log("   → Year 2 available after just 1 HOUR! ⚡\n");
+  console.log("\nDeploying PRODUCTION contracts to Ethereum Mainnet...\n");
+  console.log("WARNING: This is PRODUCTION deployment!");
+  console.log("   Environment file: .env.prod (FIXED - cannot be overridden)");
+  console.log("   MINT_EXECUTION_DELAY = 2 DAYS");
+  console.log("   YEAR_DURATION = 365 DAYS");
+  console.log("   Year 1 starts: January 1, 2025 00:00:00 UTC\n");
 
   // 1. Deploy Infrastructure Contracts
   console.log("=== Deploying Infrastructure Contracts ===\n");
@@ -25,44 +38,44 @@ async function main() {
   const SecureProxyAdmin = await ethers.getContractFactory("SecureProxyAdmin");
   const proxyAdmin = await SecureProxyAdmin.deploy(await deployer.getAddress(), 1, { gasLimit: 8_000_000 });
   await proxyAdmin.waitForDeployment();
-  console.log(`   ✅ SecureProxyAdmin: ${await proxyAdmin.getAddress()}`);
+  console.log(`   SecureProxyAdmin: ${await proxyAdmin.getAddress()}`);
 
   console.log("\n1.2. Deploying HyraProxyDeployer...");
   const HyraProxyDeployer = await ethers.getContractFactory("HyraProxyDeployer");
   const proxyDeployer = await HyraProxyDeployer.deploy({ gasLimit: 8_000_000 });
   await proxyDeployer.waitForDeployment();
-  console.log(`   ✅ HyraProxyDeployer: ${await proxyDeployer.getAddress()}`);
+  console.log(`   HyraProxyDeployer: ${await proxyDeployer.getAddress()}`);
 
   console.log("\n1.3. Deploying SecureExecutorManager...");
   const SecureExecutorManager = await ethers.getContractFactory("SecureExecutorManager");
   const executorManager = await SecureExecutorManager.deploy({ gasLimit: 8_000_000 });
   await executorManager.waitForDeployment();
-  console.log(`   ✅ SecureExecutorManager: ${await executorManager.getAddress()}`);
+  console.log(`   SecureExecutorManager: ${await executorManager.getAddress()}`);
   
   try {
     await (await executorManager.initialize(await deployer.getAddress(), [await deployer.getAddress()], { gasLimit: 8_000_000 })).wait();
-    console.log(`   ✅ SecureExecutorManager initialized`);
+    console.log(`   SecureExecutorManager initialized`);
   } catch (e) {
-    console.log(`   ⚠️  SecureExecutorManager.initialize failed (may need manual init)`);
+    console.log(`   WARNING: SecureExecutorManager.initialize failed (may need manual init)`);
   }
 
   console.log("\n1.4. Deploying ProxyAdminValidator...");
   const ProxyAdminValidator = await ethers.getContractFactory("ProxyAdminValidator");
   const proxyAdminValidator = await ProxyAdminValidator.deploy({ gasLimit: 8_000_000 });
   await proxyAdminValidator.waitForDeployment();
-  console.log(`   ✅ ProxyAdminValidator: ${await proxyAdminValidator.getAddress()}`);
+  console.log(`   ProxyAdminValidator: ${await proxyAdminValidator.getAddress()}`);
 
   try {
     await (await proxyAdminValidator.initialize(await deployer.getAddress(), { gasLimit: 8_000_000 })).wait();
-    console.log(`   ✅ ProxyAdminValidator initialized`);
+    console.log(`   ProxyAdminValidator initialized`);
   } catch (e) {
-    console.log(`   ⚠️  ProxyAdminValidator.initialize failed (may need manual init)`);
+    console.log(`   WARNING: ProxyAdminValidator.initialize failed (may need manual init)`);
   }
 
   console.log("\n=== Deploying Core Contracts ===\n");
 
-  // 2. Deploy HyraTimelock with minimal delay
-  console.log("1. Deploying HyraTimelock with 1 minute delay...");
+  // 2. Deploy HyraTimelock with production delay (2 days)
+  console.log("1. Deploying HyraTimelock with 2 day delay...");
   const HyraTimelock = await ethers.getContractFactory("HyraTimelock");
   const timelockImpl = await HyraTimelock.deploy({ gasLimit: 8_000_000 });
   await timelockImpl.waitForDeployment();
@@ -71,7 +84,7 @@ async function main() {
   const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
   
   const timelockInit = HyraTimelock.interface.encodeFunctionData("initialize", [
-    60, // minDelay = 1 minute for fast testing
+    172800, // minDelay = 2 days for production
     [await deployer.getAddress()], // proposers
     [await deployer.getAddress()], // executors
     await deployer.getAddress() // admin
@@ -80,7 +93,7 @@ async function main() {
   const timelockProxy = await ERC1967Proxy.deploy(await timelockImpl.getAddress(), timelockInit, { gasLimit: 8_000_000 });
   await timelockProxy.waitForDeployment();
   console.log(`   Proxy: ${await timelockProxy.getAddress()}`);
-  console.log(`   ✅ Timelock deployed with 1 minute delay`);
+  console.log(`   Timelock deployed with 2 day delay`);
 
   // 3. Deploy TokenVesting
   console.log("\n2. Deploying TokenVesting...");
@@ -97,10 +110,10 @@ async function main() {
   await vestingProxy.waitForDeployment();
   console.log(`   Proxy: ${await vestingProxy.getAddress()}`);
 
-  // 4. Deploy HyraTokenUltraFastTest
-  console.log("\n3. Deploying HyraTokenUltraFastTest (2 minute delay, 1 HOUR year)...");
-  const HyraTokenUltraFastTest = await ethers.getContractFactory("HyraTokenUltraFastTest");
-  const tokenImpl = await HyraTokenUltraFastTest.deploy({ gasLimit: 8_000_000 });
+  // 4. Deploy HyraToken with Year 1 starting Jan 1, 2025
+  console.log("\n3. Deploying HyraToken (PRODUCTION - 365 days per year)...");
+  const HyraToken = await ethers.getContractFactory("HyraToken");
+  const tokenImpl = await HyraToken.deploy({ gasLimit: 8_000_000 });
   await tokenImpl.waitForDeployment();
   console.log(`   Implementation: ${await tokenImpl.getAddress()}`);
 
@@ -108,51 +121,84 @@ async function main() {
   console.log(`   Safe Multisig Address: ${safeAddress}`);
   console.log(`   Owner will be: ${safeAddress}`);
   if (!process.env.SAFE_ADDRESS) {
-    console.log(`   ⚠️  WARNING: SAFE_ADDRESS not set, using deployer address as fallback!`);
+    console.log(`   WARNING: SAFE_ADDRESS not set, using deployer address as fallback!`);
   }
 
-  // MINT MAX INITIAL SUPPLY: 2.5B tokens (5% of 50B max supply)
-  const INITIAL_SUPPLY_MAX = ethers.parseEther("2500000000"); // 2.5 billion
-  console.log(`   Initial Supply: 2.5B tokens (MAX - 5% of total supply)`);
-  console.log(`   💰 Initial tokens will be minted to: Safe Multisig`);
-  console.log(`   ⚠️  Year 1 quota will be FULL - cannot mint more until Year 2`);
-  console.log(`   ⚡⚡⚡ Year 2 available after just 1 HOUR!`);
+  // Initial supply: 2.5B tokens (5% of 50B max supply)
+  const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5 billion
+  console.log(`   Initial Supply: 2.5B tokens (5% of total supply)`);
+  console.log(`   Initial tokens will be auto-distributed to 6 multisig wallets`);
+  console.log(`   WARNING: Year 1 quota will be FULL - cannot mint more until Year 2`);
 
-  // Load and validate Privileged Multisig Wallet
-  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
-  if (!privilegedMultisigWallet) {
-    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env");
-  }
-  if (!ethers.isAddress(privilegedMultisigWallet)) {
-    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
-  }
-  const code = await ethers.provider.getCode(privilegedMultisigWallet);
-  if (code === "0x") {
-    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
-  }
-  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
+  // Year 1 starts: January 1, 2025 00:00:00 UTC
+  const YEAR_START_TIME = 1735689600; // Jan 1, 2025 00:00:00 UTC
+  const yearStartDate = new Date(YEAR_START_TIME * 1000);
+  console.log(`   Year 1 Start: ${yearStartDate.toISOString()} (${YEAR_START_TIME})`);
+  console.log(`   Year 2 Start: ${new Date((YEAR_START_TIME + 365 * 24 * 60 * 60) * 1000).toISOString()}`);
 
-  const tokenInit = HyraTokenUltraFastTest.interface.encodeFunctionData("initialize", [
-    "HYRA",
-    "HYRA",
-    INITIAL_SUPPLY_MAX, // 2.5B initial supply (MAX)
-    safeAddress,        // vesting contract (not used when distributing)
-    await deployer.getAddress(),  // Temporary owner (deployer)
-    privilegedMultisigWallet // Privileged Multisig Wallet
-  ]);
-  
-  const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
+  const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x", { gasLimit: 8_000_000 });
   await tokenProxy.waitForDeployment();
   console.log(`   Proxy: ${await tokenProxy.getAddress()}`);
-  console.log(`   Token deployed with ULTRA FAST settings!`);
-  console.log(`   Initial supply minted: 2.5B HYRA to Safe Multisig`);
+  console.log(`   Token deployed with PRODUCTION settings!`);
+  console.log(`   Initial supply will be distributed after config`);
+
+  const token = await ethers.getContractAt("HyraToken", await tokenProxy.getAddress());
+  console.log(`\n=== Configuring Token Distribution (env: ${envFile}) ===`);
+  const distributionAddresses = await loadDistributionAddresses();
+  logDistributionAddresses(distributionAddresses);
+  await (
+    await token.setDistributionConfig(
+      distributionAddresses.communityEcosystem,
+      distributionAddresses.liquidityBuybackReserve,
+      distributionAddresses.marketingPartnerships,
+      distributionAddresses.teamFounders,
+      distributionAddresses.strategicAdvisors,
+      distributionAddresses.seedStrategicVC
+    )
+  ).wait();
+  console.log("   Distribution config set (immutable)");
+
+  await (
+    await token.initialize(
+      "HYRA",
+      "HYRA",
+      INITIAL_SUPPLY,
+      await vestingProxy.getAddress(),
+      await deployer.getAddress(), // temporary owner
+      privilegedMultisigWallet
+    )
+  ).wait();
+  console.log("   Initial supply distributed to 6 multisig wallets");
+  await verifyDistributionBalances(token, distributionAddresses, INITIAL_SUPPLY);
+  
+  // Load and validate TokenMintFeed address (optional - can be set later)
+  const tokenMintFeedAddress = process.env.TOKEN_MINT_FEED_ADDRESS;
+  if (tokenMintFeedAddress) {
+    if (!ethers.isAddress(tokenMintFeedAddress)) {
+      console.warn(`   ⚠️  Invalid TOKEN_MINT_FEED_ADDRESS format: ${tokenMintFeedAddress}`);
+    } else {
+      const feedCode = await ethers.provider.getCode(tokenMintFeedAddress);
+      if (feedCode === "0x") {
+        console.warn(`   ⚠️  TOKEN_MINT_FEED_ADDRESS (${tokenMintFeedAddress}) is not a contract. Skipping setTokenMintFeed().`);
+        console.warn(`   ⚠️  PRIVILEGED_MULTISIG_WALLET should call setTokenMintFeed() manually after deploying TokenMintFeed contract.`);
+      } else {
+        console.log(`   ⚠️  Note: setTokenMintFeed() must be called by PRIVILEGED_MULTISIG_WALLET`);
+        console.log(`   ⚠️  Manual step required: privilegedMultisigWallet should call:`);
+        console.log(`   ⚠️  token.setTokenMintFeed("${tokenMintFeedAddress}")`);
+      }
+    }
+  } else {
+    console.log(`   ⚠️  TOKEN_MINT_FEED_ADDRESS not set in .env.prod`);
+    console.log(`   ⚠️  PRIVILEGED_MULTISIG_WALLET should call setTokenMintFeed() after deploying TokenMintFeed contract.`);
+  }
+  console.log(`   Year 1 starts: ${yearStartDate.toISOString()}`);
   console.log(`   Temporary owner: Deployer (will transfer to DAO later)`);
 
   // 5. Initialize TokenVesting
   console.log("\n4. Initializing TokenVesting...");
   const vesting = await ethers.getContractAt("TokenVesting", await vestingProxy.getAddress());
   await (await vesting.initialize(await tokenProxy.getAddress(), await timelockProxy.getAddress(), { gasLimit: 8_000_000 })).wait();
-  console.log("   ✅ TokenVesting initialized");
+  console.log("   TokenVesting initialized");
 
   // 6. Deploy HyraGovernor
   console.log("\n5. Deploying HyraGovernor...");
@@ -164,7 +210,7 @@ async function main() {
   // Load and validate Privileged Multisig Wallet
   const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
   if (!privilegedMultisigWallet) {
-    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env");
+    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env.prod");
   }
   if (!ethers.isAddress(privilegedMultisigWallet)) {
     throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
@@ -193,7 +239,6 @@ async function main() {
 
   // 7. Transfer HyraToken ownership to DAO (Timelock)
   console.log("\n6. Transferring HyraToken ownership to DAO...");
-  const token = await ethers.getContractAt("HyraTokenUltraFastTest", await tokenProxy.getAddress());
   await (await token.transferOwnership(await timelockProxy.getAddress(), { gasLimit: 8_000_000 })).wait();
   console.log(`   HyraToken ownership transferred to Timelock (DAO)`);
   console.log(`   New owner: ${await timelockProxy.getAddress()}`);
@@ -201,26 +246,32 @@ async function main() {
 
   // Save deployment
   const deployment = {
-    network: "baseSepolia",
+    network: "mainnet",
     deployedAt: new Date().toISOString(),
     deployer: await deployer.getAddress(),
-    WARNING: "⚡⚡⚡ ULTRA FAST TEST - 1 HOUR PER YEAR - EXTREME TESTING ONLY!",
+    WARNING: "PRODUCTION DEPLOYMENT - ETHEREUM MAINNET",
     initialSupply: "2500000000", // 2.5B tokens (5% of max supply)
     initialSupplyNote: "FULL Year 1 quota - cannot mint more until Year 2",
-    initialSupplyRecipient: safeAddress, // Safe Multisig receives initial supply
+    initialSupplyRecipient: safeAddress,
     safeMultisig: safeAddress,
+    tokenOwner: await timelockProxy.getAddress(), // Ownership transferred to DAO
+    ownershipNote: "HyraToken owner = HyraTimelock (DAO). All mint requests must go through governance.",
+    yearStartTime: YEAR_START_TIME,
+    yearStartDate: yearStartDate.toISOString(),
+    year2StartDate: new Date((YEAR_START_TIME + 365 * 24 * 60 * 60) * 1000).toISOString(),
+    distribution: distributionAddresses,
     delays: {
-      MINT_EXECUTION_DELAY: "2 minutes",
-      TIMELOCK_MIN_DELAY: "1 minute",
-      REQUEST_EXPIRY_PERIOD: "7 days",
-      YEAR_DURATION: "1 HOUR ⚡⚡⚡"
+      MINT_EXECUTION_DELAY: "2 days",
+      TIMELOCK_MIN_DELAY: "2 days",
+      REQUEST_EXPIRY_PERIOD: "365 days",
+      YEAR_DURATION: "365 days"
     },
     tokenomics: {
       maxSupply: "50000000000", // 50B
       initialSupply: "2500000000", // 2.5B (5%)
       year1Remaining: "0", // FULL
-      nextMintAvailable: "Year 2 (after 1 HOUR!)",
-      initialSupplyRecipient: "Safe Multisig (NOT Vesting)",
+      nextMintAvailable: "Year 2 (after Jan 1, 2026)",
+      initialSupplyRecipient: "Safe Multisig",
     },
     infra: {
       secureProxyAdmin: await proxyAdmin.getAddress(),
@@ -235,12 +286,10 @@ async function main() {
     timelockImpl: await timelockImpl.getAddress(),
     timelockProxy: await timelockProxy.getAddress(),
     governorImpl: await governorImpl.getAddress(),
-    governorProxy: await governorProxy.getAddress(),
-    tokenOwner: await timelockProxy.getAddress(), // Ownership transferred to DAO
-    ownershipNote: "HyraToken owner = HyraTimelock (DAO). All mint requests must go through governance."
+    governorProxy: await governorProxy.getAddress()
   };
 
-  const deploymentPath = path.join(__dirname, "..", "deployments", `ultra-fast-baseSepolia-${Date.now()}.json`);
+  const deploymentPath = path.join(__dirname, "..", "deployments", `production-mainnet-${Date.now()}.json`);
   fs.writeFileSync(deploymentPath, JSON.stringify(deployment, null, 2));
 
   console.log("\n=== Deployment Complete ===");
@@ -254,7 +303,7 @@ async function main() {
   
   console.log("\nCore Contract Addresses:");
   console.log(`TokenVesting (proxy): ${await vestingProxy.getAddress()}`);
-  console.log(`HyraTokenUltraFastTest (proxy): ${await tokenProxy.getAddress()}`);
+  console.log(`HyraToken (proxy): ${await tokenProxy.getAddress()}`);
   console.log(`HyraTimelock (proxy): ${await timelockProxy.getAddress()}`);
   console.log(`HyraGovernor (proxy): ${await governorProxy.getAddress()}`);
   
@@ -264,34 +313,28 @@ async function main() {
   console.log(`   - All mint requests must go through DAO governance`);
 
   console.log("\nTOKENOMICS:");
-  console.log(`   - Initial Supply: 2.5B HYRA (MAX 5%)`);
+  console.log(`   - Initial Supply: 2.5B HYRA (5%)`);
   console.log(`   - Minted to: ${safeAddress} (Safe Multisig)`);
   console.log(`   - Year 1 Remaining: 0 (FULL)`);
   console.log(`   WARNING: Cannot mint more until Year 2!`);
 
-  console.log("\nULTRA FAST TEST MODE:");
-  console.log(`   - Mint delay: 2 MINUTES`);
-  console.log(`   - Timelock delay: 1 MINUTE`);
-  console.log(`   - Year duration: 1 HOUR`);
-  console.log(`   - Request expiry: 7 days`);
-  console.log(``);
-  console.log(`   TEST YEAR 2 MINTING:`);
-  console.log(`   1. Deploy now (Year 1, 2.5B minted)`);
-  console.log(`   2. Wait 1 HOUR`);
-  console.log(`   3. Year 2 auto-activated!`);
-  console.log(`   4. Create mint proposal through DAO governance`);
-  console.log(`   5. Wait 2 MINUTES for execution`);
+  console.log("\nYEAR SCHEDULE:");
+  console.log(`   - Year 1 Start: ${yearStartDate.toISOString()}`);
+  console.log(`   - Year 2 Start: ${new Date((YEAR_START_TIME + 365 * 24 * 60 * 60) * 1000).toISOString()}`);
+  console.log(`   - Mint delay: 2 DAYS`);
+  console.log(`   - Timelock delay: 2 DAYS`);
+  console.log(`   - Year duration: 365 DAYS`);
 
   console.log("\nNext steps:");
-  console.log("1. Verify contracts: npx hardhat run scripts/verify-ultra-fast-base-sepolia.ts --network baseSepolia");
-  console.log("2. Wait 1 HOUR");
-  console.log("3. Test Year 2 minting through governance");
-  console.log("4. Check status: npx hardhat run scripts/check-mint-status.ts --network baseSepolia");
+  console.log("1. Verify contracts on Etherscan");
+  console.log("2. Setup Timelock roles and permissions (proposers, executors)");
+  console.log("3. Setup multisig roles for ProxyAdmin");
+  console.log("4. Configure vesting schedules");
+  console.log("5. Test governance by creating a proposal");
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-
 
