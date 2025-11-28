@@ -109,12 +109,12 @@ npx hardhat run scripts/check-mint-status.ts --network baseSepolia
 ### Deploy fast test contracts:
 ```bash
 SAFE_ADDRESS=0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2 \
-npx hardhat run scripts/deploy-fast-test-base-sepolia.ts --network baseSepolia
+npx hardhat run scripts/deploy-fast-test-base-sepolia-dev.ts --network baseSepolia
 ```
 
 ### Verify contracts:
 ```bash
-npx hardhat run scripts/verify-fast-test-base-sepolia.ts --network baseSepolia
+npx hardhat run scripts/verify-fast-test-base-sepolia-dev.ts --network baseSepolia
 ```
 
 ### Check mint status:

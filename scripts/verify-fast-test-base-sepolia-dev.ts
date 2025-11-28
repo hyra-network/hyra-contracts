@@ -1,6 +1,10 @@
 import { run } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
+
+// Load .env.dev for Base Sepolia testnet
+dotenv.config({ path: ".env.dev" });
 
 async function main() {
   console.log("Verifying Fast Test contracts on Base Sepolia...\n");

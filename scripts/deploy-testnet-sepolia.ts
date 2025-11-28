@@ -167,6 +167,27 @@ async function main() {
   ).wait();
   console.log("   Initial supply distributed to 6 multisig wallets");
   await verifyDistributionBalances(token, distributionAddresses, INITIAL_SUPPLY);
+  
+  // Load and validate TokenMintFeed address (optional - can be set later)
+  const tokenMintFeedAddress = process.env.TOKEN_MINT_FEED_ADDRESS;
+  if (tokenMintFeedAddress) {
+    if (!ethers.isAddress(tokenMintFeedAddress)) {
+      console.warn(`   ⚠️  Invalid TOKEN_MINT_FEED_ADDRESS format: ${tokenMintFeedAddress}`);
+    } else {
+      const feedCode = await ethers.provider.getCode(tokenMintFeedAddress);
+      if (feedCode === "0x") {
+        console.warn(`   ⚠️  TOKEN_MINT_FEED_ADDRESS (${tokenMintFeedAddress}) is not a contract. Skipping setTokenMintFeed().`);
+        console.warn(`   ⚠️  PRIVILEGED_MULTISIG_WALLET should call setTokenMintFeed() manually after deploying TokenMintFeed contract.`);
+      } else {
+        console.log(`   ⚠️  Note: setTokenMintFeed() must be called by PRIVILEGED_MULTISIG_WALLET`);
+        console.log(`   ⚠️  Manual step required: privilegedMultisigWallet should call:`);
+        console.log(`   ⚠️  token.setTokenMintFeed("${tokenMintFeedAddress}")`);
+      }
+    }
+  } else {
+    console.log(`   ⚠️  TOKEN_MINT_FEED_ADDRESS not set in .env`);
+    console.log(`   ⚠️  PRIVILEGED_MULTISIG_WALLET should call setTokenMintFeed() after deploying TokenMintFeed contract.`);
+  }
   console.log(`   Year 1 starts: ${yearStartDate.toISOString()}`);
   console.log(`   Temporary owner: Deployer (will transfer to DAO later)`);
 
