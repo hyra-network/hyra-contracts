@@ -1,0 +1,11 @@
+{
+  "step": "07-transfer-ownership",
+  "network": "baseSepolia",
+  "transferredAt": "2025-11-28T09:11:27.757Z",
+  "contracts": {
+    "tokenProxy": "0x01040B101A872235ca7f1AF1B8D7e5F249919e91",
+    "newOwner": "0x8ac4E25A28A34fAe145D3DC4B2078D54aF755472"
+  },
+  "transactionHash": "0x9143df34548a59faaeda53b5a208cae4948a5db315a7da3fb203c141e835983f",
+  "note": "All mint requests must now go through DAO governance"
+}

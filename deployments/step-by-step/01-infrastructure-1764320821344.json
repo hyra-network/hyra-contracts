@@ -1,0 +1,12 @@
+{
+  "step": "01-infrastructure",
+  "network": "baseSepolia",
+  "deployedAt": "2025-11-28T09:07:01.344Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "contracts": {
+    "secureProxyAdmin": "0xDA35B91b5a44f66257D118Bc6A1fC479F88Ec029",
+    "hyraProxyDeployer": "0xB0308588777aedA1a05d3647CFe7a18F173b7C5e",
+    "secureExecutorManager": "0x232C25D3BFFBD575Ab5DAd731EcB7d8e26a43801",
+    "proxyAdminValidator": "0xaD3189A2d0E0589Cd5Cd81a76939Ba06C750db3a"
+  }
+}

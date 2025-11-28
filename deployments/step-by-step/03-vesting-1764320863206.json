@@ -1,0 +1,14 @@
+{
+  "step": "03-vesting",
+  "network": "baseSepolia",
+  "deployedAt": "2025-11-28T09:07:43.206Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "contracts": {
+    "vestingImpl": "0x878d8376F4Ad7f8b2f5c3c15f4321Ab999d8dEC3",
+    "vestingProxy": "0x89438b0857F5Baf90276984d280BBad5d232d693"
+  },
+  "prerequisites": {
+    "timelockProxy": "0x8ac4E25A28A34fAe145D3DC4B2078D54aF755472"
+  },
+  "note": "Vesting will be initialized after Token deployment (Step 4)"
+}

@@ -1,6 +1,23 @@
 import { HardhatUserConfig } from "hardhat/config";
 import * as dotenv from "dotenv";
+import * as fs from "fs";
+import * as path from "path";
+
+// Load .env first (default)
 dotenv.config();
+
+// Also load .env.dev if it exists (for Base Sepolia testnet)
+const envDevPath = path.resolve(__dirname, ".env.dev");
+if (fs.existsSync(envDevPath)) {
+  dotenv.config({ path: envDevPath, override: false }); // Don't override existing vars
+}
+
+// Also load .env.prod if it exists (for Mainnet)
+const envProdPath = path.resolve(__dirname, ".env.prod");
+if (fs.existsSync(envProdPath)) {
+  dotenv.config({ path: envProdPath, override: false }); // Don't override existing vars
+}
+
 import "@nomicfoundation/hardhat-toolbox";
 
 const config: HardhatUserConfig = {
@@ -9,10 +26,10 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 200, // Lower runs = smaller contract size (for new deployments like HyraGovernor)
       },
       evmVersion: "cancun",
-      viaIR: false, // Required to fix "Stack too deep" error in complex functions
+      viaIR: true, // Enable viaIR to reduce contract size (for new deployments)
     },
   },
   networks: {

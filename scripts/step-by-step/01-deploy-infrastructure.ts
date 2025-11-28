@@ -1,6 +1,14 @@
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
+
+// Load .env.dev for Base Sepolia testnet, fallback to .env for other networks
+// Can override with DOTENV_CONFIG_PATH environment variable
+const envFile = process.env.DOTENV_CONFIG_PATH || 
+  (network.name === "baseSepolia" ? ".env.dev" : 
+   network.name === "mainnet" ? ".env.prod" : ".env");
+dotenv.config({ path: envFile });
 
 /**
  * Step 1: Deploy Infrastructure Contracts
@@ -10,7 +18,11 @@ import * as path from "path";
  * - ProxyAdminValidator
  */
 async function main() {
-  const [deployer] = await ethers.getSigners();
+  const signers = await ethers.getSigners();
+  if (signers.length === 0) {
+    throw new Error("No accounts found! Please set PRIVATE_KEY in .env.dev for baseSepolia network.");
+  }
+  const deployer = signers[0];
   console.log("Deployer:", await deployer.getAddress());
   console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(await deployer.getAddress())), "ETH");
 

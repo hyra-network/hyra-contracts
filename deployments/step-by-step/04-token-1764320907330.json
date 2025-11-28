@@ -1,0 +1,22 @@
+{
+  "step": "04-token",
+  "network": "baseSepolia",
+  "deployedAt": "2025-11-28T09:08:27.330Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "contracts": {
+    "tokenImpl": "0xd6e5d2466b1ad3b45309530A786a9c1821437555",
+    "tokenProxy": "0x01040B101A872235ca7f1AF1B8D7e5F249919e91"
+  },
+  "config": {
+    "name": "HYRA",
+    "symbol": "HYRA",
+    "initialSupply": "2500000000",
+    "initialSupplyRecipient": "0xa6154bF0334Db14F5f5CB02B3524AF4ABCaE6fF2",
+    "temporaryOwner": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+    "yearStartTime": 1735689600,
+    "yearStartDate": "2025-01-01T00:00:00.000Z"
+  },
+  "prerequisites": {
+    "vestingProxy": "0x89438b0857F5Baf90276984d280BBad5d232d693"
+  }
+}
