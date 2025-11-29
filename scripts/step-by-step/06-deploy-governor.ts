@@ -49,7 +49,8 @@ async function main() {
   // 1. Deploy HyraGovernor Implementation
   console.log("\n1. Deploying HyraGovernor Implementation...");
   const HyraGovernor = await ethers.getContractFactory("HyraGovernor");
-  const governorImpl = await HyraGovernor.deploy({ gasLimit: 8_000_000 });
+  // Deploy with gas limit to avoid estimation issues
+  const governorImpl = await HyraGovernor.deploy({ gasLimit: 12_000_000 });
   await governorImpl.waitForDeployment();
   console.log(`   Implementation: ${await governorImpl.getAddress()}`);
 

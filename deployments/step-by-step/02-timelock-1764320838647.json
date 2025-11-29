@@ -1,0 +1,20 @@
+{
+  "step": "02-timelock",
+  "network": "baseSepolia",
+  "deployedAt": "2025-11-28T09:07:18.646Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "contracts": {
+    "timelockImpl": "0x8f71c94928A94f72Aaa8941e8F1C147FD21bE921",
+    "timelockProxy": "0x8ac4E25A28A34fAe145D3DC4B2078D54aF755472"
+  },
+  "config": {
+    "minDelay": "2 days (172800 seconds)",
+    "proposers": [
+      "0x424af7536BED1201D67eC27b6849419BAE68070b"
+    ],
+    "executors": [
+      "0x424af7536BED1201D67eC27b6849419BAE68070b"
+    ],
+    "admin": "0x424af7536BED1201D67eC27b6849419BAE68070b"
+  }
+}

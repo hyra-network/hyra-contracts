@@ -1,0 +1,11 @@
+{
+  "step": "05-initialize-vesting",
+  "network": "baseSepolia",
+  "initializedAt": "2025-11-28T09:09:19.580Z",
+  "contracts": {
+    "vestingProxy": "0x89438b0857F5Baf90276984d280BBad5d232d693",
+    "tokenProxy": "0x01040B101A872235ca7f1AF1B8D7e5F249919e91",
+    "timelockProxy": "0x8ac4E25A28A34fAe145D3DC4B2078D54aF755472"
+  },
+  "transactionHash": "0x99f89f9f943bd0f5f2d7ba0abf95618c45c6d81c63b57609acf8197bfbc74633"
+}

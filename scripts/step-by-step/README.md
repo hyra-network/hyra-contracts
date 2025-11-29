@@ -38,6 +38,9 @@ Các scripts sau tự động detect network và load đúng env file:
 Các scripts khác không cần env variables.
 
 ---
+Chạy lệnh compile trước 
+npx hardhat compile --force
+
 
 ## Môi trường Dev (Base Sepolia)
 
@@ -50,6 +53,9 @@ Các scripts khác không cần env variables.
 ### ✅ Prerequisites
 
 1. **Environment File**: `.env.dev` phải có các biến sau:
+
+chú ý : https://app.safe.global/ các ví multisig phải được active hết 
+
    ```bash
    # Required for Step 4 (deploy-token.ts)
    PRIVILEGED_MULTISIG_WALLET=0x...  # Multisig wallet address (must be contract)
@@ -690,3 +696,42 @@ deployments/step-by-step/
 ├── 06-governor-{timestamp}.json
 └── 07-ownership-transfer-{timestamp}.json
 ```
+
+==================================
+
+
+runs: 200 (giá trị cao)
+Ưu tiên: Gas efficiency khi thực thi
+Kích thước bytecode: Lớn hơn
+Phù hợp: Contracts được gọi nhiều lần (ví dụ: ERC20 token, contracts có nhiều transactions)
+Cách hoạt động: Compiler inline nhiều code, unroll loops, tối ưu cho việc gọi hàm nhiều lần
+runs: 1 (giá trị thấp)
+Ưu tiên: Kích thước bytecode nhỏ nhất
+Gas khi thực thi: Có thể cao hơn một chút
+Phù hợp: Implementation contracts (chỉ deploy 1 lần, ít khi gọi trực tiếp), contracts gần vượt giới hạn 24KB
+Cách hoạt động: Compiler giảm inline, giữ code gọn, ưu tiên kích thước
+
+
+compile lại với --force để tạo lại artifacts với cấu hình mới (viaIR: true, runs: 1):
+
+npx hardhat compile --force
+npx hardhat run scripts/verify-implementations.ts --network baseSepolia
+
+settings cũ (viaIR: false, runs: 200)
+npx hardhat run scripts/verify-implementations.ts --network baseSepolia
+
+đổi lại settings về viaIR: true và runs: 1 để deploy các contracts mới (như HyraGovernor) với kích thước nhỏ hơn:
+
+npx hardhat compile --force
+
+HyraToken verify được với viaIR: false (đã deploy với settings đó)
+HyraGovernor cần viaIR: true để deploy (vì lớn hơn, cần tối ưu kích thước)
+Nếu verify HyraGovernor, phải dùng cùng settings lúc deploy (viaIR: true, runs: 1)
+
+==============================
+
+Khi nào dùng viaIR: true
+Chỉ dùng nếu:
+Contract vượt 24KB với viaIR: false
+Và audit được thực hiện với viaIR: true
+Và có sự chấp thuận rõ ràng từ audit team

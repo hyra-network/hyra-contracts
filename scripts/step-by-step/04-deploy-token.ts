@@ -53,13 +53,71 @@ async function main() {
   await tokenImpl.waitForDeployment();
   console.log(`   Implementation: ${await tokenImpl.getAddress()}`);
 
-  // 2. Deploy ERC1967Proxy for Token
-  console.log("\n2. Deploying Token Proxy...");
+  // 2. Deploy ERC1967Proxy for Token (with empty init data first)
+  console.log("\n2. Deploying Token Proxy (without initialization)...");
   const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
-
-  const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5B
   
-  // Load and validate Privileged Multisig Wallet
+  // Deploy proxy with empty init data (0x) - we'll initialize after setting distribution config
+  const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), "0x", { gasLimit: 8_000_000 });
+  await tokenProxy.waitForDeployment();
+  const tokenProxyAddress = await tokenProxy.getAddress();
+  console.log(`   Proxy: ${tokenProxyAddress}`);
+  
+  // Get token contract instance
+  const token = await ethers.getContractAt("HyraToken", tokenProxyAddress);
+  
+  // 3. Load and validate Distribution Wallets from .env
+  console.log("\n3. Loading Distribution Wallets from .env...");
+  const communityEcosystemWallet = process.env.COMMUNITY_ECOSYSTEM_WALLET;
+  const liquidityBuybackReserveWallet = process.env.LIQUIDITY_BUYBACK_RESERVE_WALLET;
+  const marketingPartnershipsWallet = process.env.MARKETING_PARTNERSHIPS_WALLET;
+  const teamFoundersWallet = process.env.TEAM_FOUNDERS_WALLET;
+  const strategicAdvisorsWallet = process.env.STRATEGIC_ADVISORS_WALLET;
+  const seedStrategicVCWallet = process.env.SEED_STRATEGIC_VC_WALLET;
+  
+  if (!communityEcosystemWallet || !liquidityBuybackReserveWallet || 
+      !marketingPartnershipsWallet || !teamFoundersWallet || 
+      !strategicAdvisorsWallet || !seedStrategicVCWallet) {
+    throw new Error(`Missing distribution wallet addresses in ${envFile}`);
+  }
+  
+  // Validate all addresses
+  const distributionWallets = [
+    communityEcosystemWallet,
+    liquidityBuybackReserveWallet,
+    marketingPartnershipsWallet,
+    teamFoundersWallet,
+    strategicAdvisorsWallet,
+    seedStrategicVCWallet
+  ];
+  
+  for (const wallet of distributionWallets) {
+    if (!ethers.isAddress(wallet)) {
+      throw new Error(`Invalid distribution wallet address: ${wallet}`);
+    }
+    const walletCode = await ethers.provider.getCode(wallet);
+    if (walletCode === "0x") {
+      throw new Error(`Distribution wallet ${wallet} is not a contract. Must be a multisig wallet.`);
+    }
+  }
+  
+  console.log(`   All 6 distribution wallets validated as contracts`);
+  
+  // 4. Set Distribution Config (MUST be called before initialize)
+  console.log("\n4. Setting Distribution Config...");
+  const setConfigTx = await token.setDistributionConfig(
+    communityEcosystemWallet,
+    liquidityBuybackReserveWallet,
+    marketingPartnershipsWallet,
+    teamFoundersWallet,
+    strategicAdvisorsWallet,
+    seedStrategicVCWallet
+  );
+  await setConfigTx.wait();
+  console.log(`   Distribution config set successfully`);
+  
+  // 5. Load and validate Privileged Multisig Wallet
+  console.log("\n5. Loading Privileged Multisig Wallet...");
   const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
   if (!privilegedMultisigWallet) {
     throw new Error(`PRIVILEGED_MULTISIG_WALLET not set in ${envFile}`);
@@ -73,19 +131,21 @@ async function main() {
   }
   console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
   
-  const tokenInit = HyraToken.interface.encodeFunctionData("initialize", [
+  // 6. Initialize Token (now that distribution config is set)
+  console.log("\n6. Initializing Token...");
+  const INITIAL_SUPPLY = ethers.parseEther("2500000000"); // 2.5B
+  
+  const initTx = await token.initialize(
     "HYRA",
     "HYRA",
     INITIAL_SUPPLY,
     safeAddress,                          // vesting contract (not used when distributing)
     await deployer.getAddress(),          // Temporary owner
     privilegedMultisigWallet              // Privileged Multisig Wallet
-  ]);
-  
-  const tokenProxy = await ERC1967Proxy.deploy(await tokenImpl.getAddress(), tokenInit, { gasLimit: 8_000_000 });
-  await tokenProxy.waitForDeployment();
-  console.log(`   Proxy: ${await tokenProxy.getAddress()}`);
-  console.log(`   Initial supply minted: 2.5B HYRA to ${safeAddress}`);
+  );
+  await initTx.wait();
+  console.log(`   Token initialized successfully`);
+  console.log(`   Initial supply minted: 2.5B HYRA distributed to 6 wallets`);
   
   // Load and set TokenMintFeed address (optional - can be set later by privilegedMultisigWallet)
   const tokenMintFeedAddress = process.env.TOKEN_MINT_FEED_ADDRESS;

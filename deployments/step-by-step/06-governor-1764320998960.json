@@ -1,0 +1,20 @@
+{
+  "step": "06-governor",
+  "network": "baseSepolia",
+  "deployedAt": "2025-11-28T09:09:58.960Z",
+  "deployer": "0x424af7536BED1201D67eC27b6849419BAE68070b",
+  "contracts": {
+    "governorImpl": "0x650973608a93aD1C488EC7199017179450ad9074",
+    "governorProxy": "0xe2a080D5B78A2E6Db555b42A0f5d1Ea292Ec88AF"
+  },
+  "config": {
+    "votingDelay": "1 block",
+    "votingPeriod": "50400 blocks (~1 week)",
+    "proposalThreshold": "1000000 HYRA",
+    "quorumPercentage": "4%"
+  },
+  "prerequisites": {
+    "tokenProxy": "0x01040B101A872235ca7f1AF1B8D7e5F249919e91",
+    "timelockProxy": "0x8ac4E25A28A34fAe145D3DC4B2078D54aF755472"
+  }
+}
