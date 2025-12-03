@@ -158,6 +158,22 @@ async function main() {
   ).wait();
   console.log("   Distribution config set (immutable)");
 
+  // Load and validate Privileged Multisig Wallet BEFORE initialize
+  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
+  if (!privilegedMultisigWallet) {
+    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env.prod");
+  }
+  if (!ethers.isAddress(privilegedMultisigWallet)) {
+    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
+  }
+  
+  // Validate it's a contract (multisig wallet)
+  const code = await ethers.provider.getCode(privilegedMultisigWallet);
+  if (code === "0x") {
+    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
+  }
+  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
+
   await (
     await token.initialize(
       "HYRA",
@@ -207,21 +223,7 @@ async function main() {
   await governorImpl.waitForDeployment();
   console.log(`   Implementation: ${await governorImpl.getAddress()}`);
 
-  // Load and validate Privileged Multisig Wallet
-  const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
-  if (!privilegedMultisigWallet) {
-    throw new Error("PRIVILEGED_MULTISIG_WALLET not set in .env.prod");
-  }
-  if (!ethers.isAddress(privilegedMultisigWallet)) {
-    throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
-  }
-  
-  // Validate it's a contract (multisig wallet)
-  const code = await ethers.provider.getCode(privilegedMultisigWallet);
-  if (code === "0x") {
-    throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
-  }
-  console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
+  // privilegedMultisigWallet đã được load ở trên (trước khi initialize token)
 
   const governorInit = HyraGovernor.interface.encodeFunctionData("initialize", [
     await tokenProxy.getAddress(),

@@ -33,6 +33,16 @@ contract ProposalForwarder {
         return IHyraGovernor(governor).proposeWithType(targets, values, calldatas, description, IHyraGovernor.ProposalType(proposalType));
     }
     
+    function propose(
+        address governor,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) external onlyOwner returns (uint256) {
+        return IHyraGovernor(governor).propose(targets, values, calldatas, description);
+    }
+    
     function cancel(
         address governor,
         address[] memory targets,

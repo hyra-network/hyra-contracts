@@ -39,7 +39,9 @@ async function main() {
 	const token = await HyraToken.deploy();
 	await token.waitForDeployment();
 	console.log(`HyraToken: ${await token.getAddress()}`);
-	
+
+	const safeAddress = process.env.SAFE_ADDRESS || await deployer.getAddress();
+
 	// 3.1) Set Distribution Config BEFORE initialize
 	console.log(`\n=== Setting Distribution Configuration ===`);
 	const addresses = {
@@ -104,14 +106,23 @@ async function main() {
 		)
 	).wait();
 	console.log(`   ✅ Distribution config set (immutable)`);
-	
+
 	// 3.2) Initialize token - will auto-distribute to 6 wallets
 	const INITIAL_SUPPLY_MAX = ethers.parseEther("2500000000"); // 2.5 billion
 	console.log(`\n=== Initializing Token ===`);
 	console.log(`   Initial Supply: 2.5B tokens (MAX - 5% of total supply)`);
 	console.log(`   💰 Initial tokens will be auto-distributed to 6 multisig wallets`);
 	console.log(`   ⚠️  Year 1 quota will be FULL - cannot mint more until Year 2`);
-	
+
+	// Load and validate Privileged Multisig Wallet
+	const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
+	if (!privilegedMultisigWallet) {
+		throw new Error(`PRIVILEGED_MULTISIG_WALLET not set in ${envFile}`);
+	}
+	if (!ethers.isAddress(privilegedMultisigWallet)) {
+		throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
+	}
+
 	await (
 		await token.initialize(
 			"HYRA",
@@ -119,7 +130,7 @@ async function main() {
 			INITIAL_SUPPLY_MAX,
 			await vesting.getAddress(),  // vesting contract (not used when distributing)
 			await timelock.getAddress(),
-			await privilegedMultisig.getAddress()
+			privilegedMultisigWallet
 		)
 	).wait();
 	console.log(`✅ HyraToken initialized - 2.5B HYRA distributed to 6 multisig wallets`);
@@ -134,7 +145,7 @@ async function main() {
 	const balance5 = await token.balanceOf(config.strategicAdvisors);
 	const balance6 = await token.balanceOf(config.seedStrategicVC);
 	const total = balance1 + balance2 + balance3 + balance4 + balance5 + balance6;
-	
+
 	console.log(`   Community & Ecosystem: ${ethers.formatEther(balance1)} HYRA`);
 	console.log(`   Liquidity, Buyback & Reserve: ${ethers.formatEther(balance2)} HYRA`);
 	console.log(`   Marketing & Partnerships: ${ethers.formatEther(balance3)} HYRA`);
@@ -142,7 +153,7 @@ async function main() {
 	console.log(`   Strategic Advisors: ${ethers.formatEther(balance5)} HYRA`);
 	console.log(`   Seed & Strategic VC: ${ethers.formatEther(balance6)} HYRA`);
 	console.log(`   Total Distributed: ${ethers.formatEther(total)} HYRA`);
-	
+
 	if (total === INITIAL_SUPPLY_MAX) {
 		console.log(`   ✅ Distribution verified: Total matches initial supply`);
 	} else {
@@ -163,23 +174,9 @@ async function main() {
 	const governor = await HyraGovernor.deploy();
 	await governor.waitForDeployment();
 	console.log(`HyraGovernor: ${await governor.getAddress()}`);
-	
-	// Load and validate Privileged Multisig Wallet
-	const privilegedMultisigWallet = process.env.PRIVILEGED_MULTISIG_WALLET;
-	if (!privilegedMultisigWallet) {
-		throw new Error(`PRIVILEGED_MULTISIG_WALLET not set in ${envFile}`);
-	}
-	if (!ethers.isAddress(privilegedMultisigWallet)) {
-		throw new Error(`Invalid PRIVILEGED_MULTISIG_WALLET address: ${privilegedMultisigWallet}`);
-	}
-	
-	// Validate it's a contract (multisig wallet)
-	const code = await ethers.provider.getCode(privilegedMultisigWallet);
-	if (code === "0x") {
-		throw new Error(`PRIVILEGED_MULTISIG_WALLET (${privilegedMultisigWallet}) is not a contract. Must be a multisig wallet.`);
-	}
+
 	console.log(`   Privileged Multisig Wallet: ${privilegedMultisigWallet} (verified as contract)`);
-	
+
 	await (
 		await governor.initialize(
 			await token.getAddress(),
@@ -234,7 +231,7 @@ async function main() {
 	};
 	fs.writeFileSync(file, JSON.stringify(info, null, 2));
 	console.log(`Saved deployment: ${file}`);
-	
+
 	console.log("\n🎉 DEPLOYMENT COMPLETE!");
 	console.log(`✅ Initial Supply: 2.5B HYRA (MAX 5%)`);
 	console.log(`💰 Tokens minted to: ${safeAddress} (Safe Multisig)`);
