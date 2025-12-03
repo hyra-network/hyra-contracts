@@ -664,9 +664,16 @@ contract HyraGovernor is
         bool isPrivilegedMultisigWallet = isPrivilegedMultisig(msg.sender);
         
         if (isMintRequest) {
-            // MINT REQUEST proposals require Privileged Multisig Wallet
+            // MINT REQUEST proposals require:
+            // 1. Privileged Multisig Wallet, OR
+            // 2. User with >= 3% voting power
             if (!isPrivilegedMultisigWallet) {
-                revert OnlyPrivilegedMultisigWallet();
+                uint256 votingPower = token().getVotes(msg.sender);
+                uint256 requiredThreshold = calculateMintRequestThreshold(); // 3% threshold
+                
+                if (votingPower < requiredThreshold) {
+                    revert InsufficientVotingPowerForMintRequest();
+                }
             }
         } else {
             // For STANDARD proposals (when called directly without proposeWithType),
