@@ -174,11 +174,14 @@ contract HyraGovernor is
         // Check proposal type requirements
         if (proposalType == ProposalType.STANDARD) {
             // STANDARD proposals require 3% total supply voting power
-            uint256 votingPower = token().getVotes(msg.sender);
-            uint256 requiredThreshold = calculateMintRequestThreshold(); // 3% threshold
-            
-            if (votingPower < requiredThreshold) {
-                revert InsufficientVotingPowerForStandardProposal();
+            // OR Privileged Multisig Wallet can bypass this requirement
+            if (!isPrivilegedMultisigWallet) {
+                uint256 votingPower = token().getVotes(msg.sender);
+                uint256 requiredThreshold = calculateMintRequestThreshold(); // 3% threshold
+                
+                if (votingPower < requiredThreshold) {
+                    revert InsufficientVotingPowerForStandardProposal();
+                }
             }
         } else if (
             proposalType == ProposalType.UPGRADE ||

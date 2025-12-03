@@ -113,7 +113,6 @@ export async function deployCore() {
     INITIAL_SUPPLY,
     voter1.address,
     timelockProxyAddr, // owner/governance is Timelock (proxy)
-    0, // yearStartTime - 0 means use block.timestamp
     await privilegedMultisig.getAddress() // privilegedMultisigWallet (must be contract)
   );
 
@@ -160,10 +159,14 @@ export async function deployCore() {
   await (await timelock.grantRole(EXECUTOR_ROLE, deployer.address)).wait();
   await (await timelock.revokeRole(ADMIN_ROLE, deployer.address)).wait();
 
+  // ========= Setup voting power - tokens are distributed to 6 wallets, need to transfer from them =========
+  const distributionWallet1 = await ethers.getContractAt("MockDistributionWallet", distributionWallets[0]);
+  await (await distributionWallet1.connect(deployer).forwardTokens(tokenProxy, voter1.address, ethers.parseEther("300000"))).wait();
+  await (await distributionWallet1.connect(deployer).forwardTokens(tokenProxy, voter2.address, ethers.parseEther("200000"))).wait();
+  
   // ========= Delegations =========
-  await (await token.connect((await ethers.getSigners())[1]).delegate((await ethers.getSigners())[1].address)).wait();
-  await (await token.connect((await ethers.getSigners())[1]).transfer((await ethers.getSigners())[2].address, ethers.parseEther("400000"))).wait();
-  await (await token.connect((await ethers.getSigners())[2]).delegate((await ethers.getSigners())[2].address)).wait();
+  await (await token.connect(voter1).delegate(voter1.address)).wait();
+  await (await token.connect(voter2).delegate(voter2.address)).wait();
   await mine(1);
 
   return {
